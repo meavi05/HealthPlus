@@ -1,0 +1,5 @@
+{
+  "name": "Health Plus Store",
+  "description": "A pharmacy application inspired by Tata 1mg, featuring medicine catalog, ordering, and user authentication.",
+  "requestFramePermissions": []
+}
