@@ -2,19 +2,59 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# HealthPlus
 
-This contains everything you need to run your app locally.
+HealthPlus is now structured as:
 
-View your app in AI Studio: https://ai.studio/apps/faa48fbe-9c8d-4d9c-b200-5e77f1e2b3d0
+- **Frontend**: React + Vite (`/`)
+- **Backend**: Spring Boot (`/backend`)
 
-## Run Locally
+## Prerequisites
 
-**Prerequisites:**  Node.js
+- Node.js 20+ (Node 22 recommended)
+- npm 10+
+- Java 21+
+- Maven 3.9+
 
+## Run locally
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Terminal 1: Spring Boot backend
+
+```bash
+npm run backend:dev
+```
+
+Backend runs on `http://localhost:8080`.
+
+### Terminal 2: React frontend
+
+```bash
+npm run dev
+```
+
+Frontend runs on `http://localhost:5173`.
+
+Vite proxies `/api/*` requests to Spring Boot.
+
+### OAuth redirect config
+
+Set `FRONTEND_URL` for backend OAuth success/logout redirects (default: `http://localhost:5173`).
+
+```bash
+export FRONTEND_URL="http://localhost:5173"
+```
+
+## Useful scripts
+
+- `npm run dev` — start frontend (Vite)
+- `npm run backend:dev` — start Spring Boot backend
+- `npm run dev:full` — run frontend + backend concurrently
+- `npm run build` — build frontend
+- `npm run preview` — preview built frontend
+- `npm run lint` — TypeScript typecheck for frontend
+
+## Backend migration docs
+
+- Migration plan: `SPRING_BOOT_BACKEND_MIGRATION.md`
+- Executed phase report: `MIGRATION_EXECUTION_REPORT.md`
+- Tata 1mg alignment execution report: `TATA_1MG_ALIGNMENT_REPORT.md`
