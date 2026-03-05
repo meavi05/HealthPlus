@@ -99,7 +99,6 @@ export default function AppHeader({
           {user ? (
             <>
               <button onClick={onFetchOrders} className="text-gray-600 hover:text-teal-600">My Orders</button>
-              <button onClick={onFetchProfile} className="text-gray-600 hover:text-teal-600">Profile</button>
               <a href="/api/auth/logout" className="text-gray-600 hover:text-teal-600">Logout</a>
             </>
           ) : (
