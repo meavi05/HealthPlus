@@ -20,10 +20,15 @@ interface CartModalProps {
   paymentMethod: 'gpay' | 'phonepe';
   isPlacingOrder: boolean;
   orderError: string | null;
+  isPaymentMethodRegistered: boolean;
+  isLoadingPaymentMethods: boolean;
+  isRegisteringPaymentMethod: boolean;
+  paymentRegistrationError: string | null;
   onClose: () => void;
   onUpdateQuantity: (id: number, quantity: number) => void;
   onRemoveFromCart: (id: number) => void;
   onPaymentMethodChange: (method: 'gpay' | 'phonepe') => void;
+  onRegisterPaymentMethod: (method: 'gpay' | 'phonepe', upiId: string) => void;
   onPlaceOrder: () => void;
 }
 
@@ -34,13 +39,19 @@ export default function CartModal({
   paymentMethod,
   isPlacingOrder,
   orderError,
+  isPaymentMethodRegistered,
+  isLoadingPaymentMethods,
+  isRegisteringPaymentMethod,
+  paymentRegistrationError,
   onClose,
   onUpdateQuantity,
   onRemoveFromCart,
   onPaymentMethodChange,
+  onRegisterPaymentMethod,
   onPlaceOrder,
 }: CartModalProps) {
   const [updatedItemId, setUpdatedItemId] = useState<number | null>(null);
+  const [upiId, setUpiId] = useState('');
 
   if (!show) return null;
 
@@ -108,12 +119,40 @@ export default function CartModal({
                 </div>
               </div>
 
+              {isLoadingPaymentMethods ? (
+                <p className="text-sm text-gray-500">Checking registered payment methods...</p>
+              ) : isPaymentMethodRegistered ? (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2">
+                  {paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'} is registered and ready.
+                </p>
+              ) : (
+                <div className="space-y-2 border border-amber-200 bg-amber-50 rounded p-3">
+                  <p className="text-sm text-amber-800">Register {paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'} before payment.</p>
+                  <input
+                    type="text"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    placeholder="Enter UPI ID (e.g. name@okbank)"
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onRegisterPaymentMethod(paymentMethod, upiId)}
+                    disabled={isRegisteringPaymentMethod || !upiId.trim()}
+                    className="w-full bg-amber-600 text-white py-2 rounded text-sm disabled:opacity-60"
+                  >
+                    {isRegisteringPaymentMethod ? 'Registering...' : `Register ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'}`}
+                  </button>
+                  {paymentRegistrationError && <p className="text-sm text-red-600">{paymentRegistrationError}</p>}
+                </div>
+              )}
+
               {orderError && <p className="text-sm text-red-600">{orderError}</p>}
 
               <button
                 type="button"
                 onClick={onPlaceOrder}
-                disabled={isPlacingOrder}
+                disabled={isPlacingOrder || !isPaymentMethodRegistered}
                 className="mt-2 w-full bg-teal-600 text-white py-2 rounded-lg disabled:opacity-60"
               >
                 {isPlacingOrder ? 'Placing Order...' : `Pay with ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'} & Place Order`}

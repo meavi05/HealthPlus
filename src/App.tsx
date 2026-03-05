@@ -39,6 +39,11 @@ interface ProfileUser {
 }
 
 
+interface RegisteredPaymentMethod {
+  id: number;
+  provider: 'gpay' | 'phonepe';
+}
+
 interface Suggestion {
   id: number;
   name: string;
@@ -64,6 +69,10 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<'gpay' | 'phonepe'>('gpay');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<RegisteredPaymentMethod[]>([]);
+  const [isLoadingPaymentMethods, setIsLoadingPaymentMethods] = useState(false);
+  const [isRegisteringPaymentMethod, setIsRegisteringPaymentMethod] = useState(false);
+  const [paymentRegistrationError, setPaymentRegistrationError] = useState<string | null>(null);
   const [location, setLocation] = useState('Delhi 110001');
   const [activeTab, setActiveTab] = useState('Medicines');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -198,6 +207,49 @@ export default function App() {
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+
+  const loadPaymentMethods = () => {
+    if (!user || typeof user.id !== 'number') {
+      setPaymentMethods([]);
+      return;
+    }
+
+    setIsLoadingPaymentMethods(true);
+    fetch(`/api/users/${user.id}/payment-methods`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setPaymentMethods(Array.isArray(data) ? data : []))
+      .catch(() => setPaymentMethods([]))
+      .finally(() => setIsLoadingPaymentMethods(false));
+  };
+
+  const registerPaymentMethod = (provider: 'gpay' | 'phonepe', upiId: string) => {
+    if (!user || typeof user.id !== 'number') {
+      setPaymentRegistrationError('Please log in to register payment options.');
+      return;
+    }
+
+    setPaymentRegistrationError(null);
+    setIsRegisteringPaymentMethod(true);
+
+    fetch(`/api/users/${user.id}/payment-methods`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, upi_vpa: upiId.trim() }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Failed to register payment method');
+        }
+      })
+      .then(() => {
+        setPaymentMethod(provider);
+        loadPaymentMethods();
+      })
+      .catch((error: Error) => setPaymentRegistrationError(error.message))
+      .finally(() => setIsRegisteringPaymentMethod(false));
+  };
+
   const placeOrder = () => {
     if (!user) {
       setOrderError('Please log in to place an order.');
@@ -211,6 +263,12 @@ export default function App() {
 
     if (cart.length === 0) {
       setOrderError('Your cart is empty. Add medicines to continue.');
+      return;
+    }
+
+    const isRegistered = paymentMethods.some((method) => method.provider === paymentMethod);
+    if (!isRegistered) {
+      setOrderError(`Please register ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'} before payment.`);
       return;
     }
 
@@ -270,6 +328,12 @@ export default function App() {
       }
     });
   };
+
+  useEffect(() => {
+    if (showCart) {
+      loadPaymentMethods();
+    }
+  }, [showCart, user]);
 
   const openMedicineDetails = (medicineId: number) => {
     fetch(`/api/medicines/${medicineId}`)
@@ -404,13 +468,19 @@ export default function App() {
         paymentMethod={paymentMethod}
         isPlacingOrder={isPlacingOrder}
         orderError={orderError}
+        isPaymentMethodRegistered={paymentMethods.some((method) => method.provider === paymentMethod)}
+        isLoadingPaymentMethods={isLoadingPaymentMethods}
+        isRegisteringPaymentMethod={isRegisteringPaymentMethod}
+        paymentRegistrationError={paymentRegistrationError}
         onClose={() => {
           setShowCart(false);
           setOrderError(null);
+          setPaymentRegistrationError(null);
         }}
         onUpdateQuantity={updateQuantity}
         onRemoveFromCart={removeFromCart}
         onPaymentMethodChange={setPaymentMethod}
+        onRegisterPaymentMethod={registerPaymentMethod}
         onPlaceOrder={placeOrder}
       />
 

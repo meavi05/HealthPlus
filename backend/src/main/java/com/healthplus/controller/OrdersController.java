@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -24,9 +25,12 @@ public class OrdersController {
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public OrderCreateResponse createOrder(@RequestBody CreateOrderRequest request) {
-        Long orderId = orderService.createOrder(request);
-        return new OrderCreateResponse(orderId);
+    public org.springframework.http.ResponseEntity<?> createOrder(@RequestBody CreateOrderRequest request) {
+        try {
+            Long orderId = orderService.createOrder(request);
+            return org.springframework.http.ResponseEntity.status(HttpStatus.CREATED).body(new OrderCreateResponse(orderId));
+        } catch (IllegalArgumentException ex) {
+            return org.springframework.http.ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
     }
 }

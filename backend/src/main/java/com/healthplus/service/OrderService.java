@@ -59,14 +59,30 @@ public class OrderService {
 
     @Transactional
     public Long createOrder(CreateOrderRequest request) {
+        if (request.paymentMethod() == null || request.paymentMethod().isBlank()) {
+            throw new IllegalArgumentException("Payment method is required");
+        }
+
+        Integer paymentMethodCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_payment_methods WHERE user_id = ? AND provider = ? AND status = 'active' AND is_verified = 1",
+                Integer.class,
+                request.userId(),
+                request.paymentMethod().toLowerCase()
+        );
+
+        if (paymentMethodCount == null || paymentMethodCount == 0) {
+            throw new IllegalArgumentException("Register selected payment method before placing order");
+        }
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO orders (user_id, total_price) VALUES (?, ?)",
+                    "INSERT INTO orders (user_id, total_price, payment_method, payment_status) VALUES (?, ?, ?, ?)",
                     Statement.RETURN_GENERATED_KEYS
             );
             ps.setLong(1, request.userId());
             ps.setDouble(2, request.totalPrice());
+            ps.setString(3, request.paymentMethod().toLowerCase());
+            ps.setString(4, "authorized");
             return ps;
         }, keyHolder);
 
