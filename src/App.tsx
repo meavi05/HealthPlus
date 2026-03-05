@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import AppHeader from './components/AppHeader';
 import ProductGrid from './components/ProductGrid';
@@ -49,15 +49,14 @@ export default function App() {
   const [totalMedicines, setTotalMedicines] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [limit] = useState(8);
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    const savedCart = localStorage.getItem('cart');
-    return savedCart ? JSON.parse(savedCart) : [];
-  });
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [showOrders, setShowOrders] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [showCart, setShowCart] = useState(false);
@@ -68,6 +67,8 @@ export default function App() {
   const [categories, setCategories] = useState<string[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
+
+  const cartStorageKey = useMemo(() => (user ? `cart_${user.id}` : 'cart_guest'), [user]);
 
   useEffect(() => {
     fetch('/api/me')
@@ -118,13 +119,33 @@ export default function App() {
   );
 
   const fetchOrders = () => {
-    if (!user) return alert('Please log in to view orders');
+    setShowOrders(true);
+
+    if (!user) {
+      setOrders([]);
+      setOrdersError('Please log in to view your orders.');
+      setOrdersLoading(false);
+      return;
+    }
+
+    setOrdersLoading(true);
+    setOrdersError(null);
+
     fetch(`/api/orders/${user.id}`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Unable to load orders right now.');
+        }
+        return res.json();
+      })
       .then((data) => {
-        setOrders(data);
-        setShowOrders(true);
-      });
+        setOrders(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        setOrders([]);
+        setOrdersError('Unable to load orders right now. Please try again.');
+      })
+      .finally(() => setOrdersLoading(false));
   };
 
   const fetchProfile = () => {
@@ -133,8 +154,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(cart));
-  }, [cart]);
+    const savedCart = localStorage.getItem(cartStorageKey);
+    setCart(savedCart ? JSON.parse(savedCart) : []);
+  }, [cartStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+  }, [cart, cartStorageKey]);
 
   const addToCart = (medicine: Medicine) => {
     setAddingToCart(medicine.id);
@@ -294,7 +320,16 @@ export default function App() {
         onViewDetails={openMedicineDetails}
       />
 
-      <OrdersModal show={showOrders} orders={orders} onClose={() => setShowOrders(false)} />
+      <OrdersModal
+        show={showOrders}
+        orders={orders}
+        loading={ordersLoading}
+        error={ordersError}
+        onClose={() => {
+          setShowOrders(false);
+          setOrdersError(null);
+        }}
+      />
 
       {showLogin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

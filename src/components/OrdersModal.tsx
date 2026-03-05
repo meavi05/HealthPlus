@@ -16,10 +16,12 @@ interface Order {
 interface OrdersModalProps {
   show: boolean;
   orders: Order[];
+  loading?: boolean;
+  error?: string | null;
   onClose: () => void;
 }
 
-export default function OrdersModal({ show, orders, onClose }: OrdersModalProps) {
+export default function OrdersModal({ show, orders, loading = false, error = null, onClose }: OrdersModalProps) {
   if (!show) return null;
 
   return (
@@ -29,13 +31,17 @@ export default function OrdersModal({ show, orders, onClose }: OrdersModalProps)
           <X size={20} />
         </button>
         <h3 className="text-xl font-semibold mb-4">My Orders</h3>
-        {orders.length === 0 ? (
-          <p>No orders found.</p>
+        {loading ? (
+          <p className="text-gray-600">Loading your orders...</p>
+        ) : error ? (
+          <p className="text-red-600">{error}</p>
+        ) : orders.length === 0 ? (
+          <p>No orders found yet. Place an order from your cart to see it here.</p>
         ) : (
           <ul className="space-y-4">
             {orders.map((order) => (
               <li key={order.id} className="border-b py-2">
-                <p className="font-semibold">Order #{order.id} - Total: ${order.total_price}</p>
+                <p className="font-semibold">Order #{order.id} - Total: ₹{Number(order.total_price).toFixed(2)}</p>
                 <p className="text-sm">Status: <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">{order.status || 'Pending'}</span></p>
                 <ul className="mt-2 text-sm text-gray-600">
                   {order.items.map((item) => (
