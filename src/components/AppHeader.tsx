@@ -1,4 +1,4 @@
-import { MapPin, Menu, Search, ShoppingCart, User } from 'lucide-react';
+import { MapPin, Menu, Search, ShoppingCart } from 'lucide-react';
 
 interface Suggestion {
   id: number;
@@ -104,8 +104,24 @@ export default function AppHeader({
           ) : (
             <button onClick={onOpenLogin} className="text-gray-600 hover:text-teal-600">Login</button>
           )}
-          <button type="button" onClick={handleProfileIconClick} className="text-gray-600 hover:text-teal-600" aria-label="Open profile">
-            <User />
+          <button
+            type="button"
+            onClick={handleProfileIconClick}
+            className="rounded-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+            aria-label="Open profile"
+          >
+            {user?.profile_picture ? (
+              <img
+                src={user.profile_picture}
+                alt={`${user?.name || 'User'} profile`}
+                className="h-8 w-8 rounded-full object-cover border border-teal-100"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="h-8 w-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-sm font-semibold border border-teal-200">
+                {(user?.name?.charAt(0) || 'U').toUpperCase()}
+              </span>
+            )}
           </button>
           <div className="relative cursor-pointer" onClick={onOpenCart}>
             <ShoppingCart className="text-gray-600" />
