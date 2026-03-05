@@ -21,6 +21,14 @@ export default function AppHeader({
   onOpenLogin,
   onOpenCart,
 }: AppHeaderProps) {
+  const handleProfileIconClick = () => {
+    if (user) {
+      onFetchProfile();
+      return;
+    }
+    onOpenLogin();
+  };
+
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -50,7 +58,9 @@ export default function AppHeader({
           ) : (
             <button onClick={onOpenLogin} className="text-gray-600 hover:text-teal-600">Login</button>
           )}
-          <User className="text-gray-600" />
+          <button type="button" onClick={handleProfileIconClick} className="text-gray-600 hover:text-teal-600" aria-label="Open profile">
+            <User />
+          </button>
           <div className="relative cursor-pointer" onClick={onOpenCart}>
             <ShoppingCart className="text-gray-600" />
             {totalItems > 0 && (

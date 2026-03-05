@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 
 interface Medicine {
   id: number;
@@ -43,7 +44,10 @@ export default function CartModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl max-w-lg w-full mx-4">
+      <div className="bg-white p-6 rounded-xl max-w-lg w-full mx-4 relative">
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" aria-label="Close cart">
+          <X size={20} />
+        </button>
         <h3 className="text-xl font-semibold mb-4">Your Cart</h3>
         {cart.length === 0 ? (
           <div className="text-center py-8">
@@ -79,7 +83,6 @@ export default function CartModal({
             </div>
           </>
         )}
-        <button onClick={onClose} className="mt-6 w-full bg-gray-200 text-gray-800 py-2 rounded-lg">Close</button>
       </div>
     </div>
   );

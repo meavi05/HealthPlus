@@ -1,3 +1,5 @@
+import { X } from 'lucide-react';
+
 interface OrderItem {
   id: number;
   medicine_name: string;
@@ -22,7 +24,10 @@ export default function OrdersModal({ show, orders, onClose }: OrdersModalProps)
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl max-w-lg w-full mx-4">
+      <div className="bg-white p-6 rounded-xl max-w-lg w-full mx-4 relative">
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" aria-label="Close orders">
+          <X size={20} />
+        </button>
         <h3 className="text-xl font-semibold mb-4">My Orders</h3>
         {orders.length === 0 ? (
           <p>No orders found.</p>
@@ -41,7 +46,6 @@ export default function OrdersModal({ show, orders, onClose }: OrdersModalProps)
             ))}
           </ul>
         )}
-        <button onClick={onClose} className="mt-4 bg-gray-200 px-4 py-2 rounded">Close</button>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { User } from 'lucide-react';
+import { User, X } from 'lucide-react';
 
 interface ProfileUser {
   id: number;
@@ -40,7 +40,10 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl max-w-lg w-full mx-4">
+      <div className="bg-white p-6 rounded-xl max-w-lg w-full mx-4 relative">
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" aria-label="Close profile">
+          <X size={20} />
+        </button>
         <h3 className="text-xl font-semibold mb-4">User Profile</h3>
         <div className="flex flex-col gap-4">
           <div className="w-24 h-24 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center overflow-hidden">
@@ -69,7 +72,6 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
           ) : (
             <button onClick={() => setIsEditing(true)} className="flex-1 bg-teal-600 text-white py-2 rounded">Edit</button>
           )}
-          <button onClick={onClose} className="flex-1 bg-gray-200 py-2 rounded">Close</button>
         </div>
       </div>
     </div>

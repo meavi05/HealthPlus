@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import AppHeader from './components/AppHeader';
 import ProductGrid from './components/ProductGrid';
 import OrdersModal from './components/OrdersModal';
@@ -203,13 +204,15 @@ export default function App() {
 
       {showLogin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl max-w-sm w-full mx-4">
+          <div className="bg-white p-6 rounded-xl max-w-sm w-full mx-4 relative">
+            <button type="button" onClick={() => setShowLogin(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" aria-label="Close login">
+              <X size={20} />
+            </button>
             <h3 className="text-xl font-semibold mb-4">Login / Register</h3>
             <div className="flex flex-col gap-4">
               <a href="/api/auth/google" className="bg-red-500 text-white py-2 rounded-lg text-center">Login with Google</a>
               <a href="/api/auth/facebook" className="bg-blue-600 text-white py-2 rounded-lg text-center">Login with Facebook</a>
             </div>
-            <button onClick={() => setShowLogin(false)} className="mt-6 w-full bg-gray-200 text-gray-800 py-2 rounded-lg">Close</button>
           </div>
         </div>
       )}

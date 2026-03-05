@@ -10,7 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "backend:dev": "cd backend && mvn spring-boot:run",
-    "dev:full": "concurrently \"npm run backend:dev\" \"npm run dev\""
+    "dev:full": "sh -c \"npm run backend:dev & npm run dev\""
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -25,7 +25,6 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^9.2.1",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
