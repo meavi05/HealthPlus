@@ -4,77 +4,48 @@
 
 # HealthPlus
 
-A full-stack TypeScript app for browsing medicines and placing orders.
+HealthPlus is now structured as:
 
-## Local development
+- **Frontend**: React + Vite (`/`)
+- **Backend**: Spring Boot (`/backend`)
 
-### Prerequisites
+## Prerequisites
 
-- **Node.js 20+** (Node 22 LTS recommended)
+- Node.js 20+ (Node 22 recommended)
 - npm 10+
+- Java 21+
+- Maven 3.9+
 
-> Why this matters: this project uses Vite 6, tsx, and better-sqlite3 versions that do not support Node 16.
+## Run locally
 
-### 1) Use a supported Node version
-
-If you use `nvm`:
-
-```bash
-nvm install 22
-nvm use 22
-node -v
-npm -v
-```
-
-If you use `fnm`:
+### Terminal 1: Spring Boot backend
 
 ```bash
-fnm install 22
-fnm use 22
-node -v
-npm -v
+npm run backend:dev
 ```
 
-### 2) Install dependencies
+Backend runs on `http://localhost:8080`.
 
-```bash
-npm install
-```
-
-### 3) Run the app
+### Terminal 2: React frontend
 
 ```bash
 npm run dev
 ```
 
-The app runs at `http://localhost:3000`.
+Frontend runs on `http://localhost:5173`.
 
-## Troubleshooting
+Vite proxies `/api/*` requests to Spring Boot.
 
-### `npm WARN EBADENGINE Unsupported engine`
+## Useful scripts
 
-You're on an unsupported Node version (commonly Node 16). Switch to Node 20+ and reinstall.
+- `npm run dev` — start frontend (Vite)
+- `npm run backend:dev` — start Spring Boot backend
+- `npm run dev:full` — run frontend + backend concurrently
+- `npm run build` — build frontend
+- `npm run preview` — preview built frontend
+- `npm run lint` — TypeScript typecheck for frontend
 
-### `better-sqlite3` build failure on Apple Silicon
+## Backend migration docs
 
-This project pins a `better-sqlite3` version that supports modern Node releases. When using Node 16, prebuilt binaries are not available and native build often fails. Upgrading Node to 20+ resolves this in most cases.
-
-### Clean reinstall after switching Node
-
-```bash
-rm -rf node_modules package-lock.json
-npm install
-npm run dev
-```
-
-## Available scripts
-
-- `npm run dev` – start Express + Vite middleware server
-- `npm run lint` – TypeScript typecheck (`tsc --noEmit`)
-- `npm run build` – frontend production build
-- `npm run preview` – preview Vite build output
-
-## Backend migration option
-
-If you want to replace the Express backend with Java Spring Boot, follow `SPRING_BOOT_BACKEND_MIGRATION.md` for a full file-by-file migration plan and rollout checklist.
-
+- Migration plan: `SPRING_BOOT_BACKEND_MIGRATION.md`
+- Executed phase report: `MIGRATION_EXECUTION_REPORT.md`
