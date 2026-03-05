@@ -17,9 +17,13 @@ interface CartModalProps {
   show: boolean;
   cart: CartItem[];
   totalPrice: number;
+  paymentMethod: 'gpay' | 'phonepe';
+  isPlacingOrder: boolean;
+  orderError: string | null;
   onClose: () => void;
   onUpdateQuantity: (id: number, quantity: number) => void;
   onRemoveFromCart: (id: number) => void;
+  onPaymentMethodChange: (method: 'gpay' | 'phonepe') => void;
   onPlaceOrder: () => void;
 }
 
@@ -27,9 +31,13 @@ export default function CartModal({
   show,
   cart,
   totalPrice,
+  paymentMethod,
+  isPlacingOrder,
+  orderError,
   onClose,
   onUpdateQuantity,
   onRemoveFromCart,
+  onPaymentMethodChange,
   onPlaceOrder,
 }: CartModalProps) {
   const [updatedItemId, setUpdatedItemId] = useState<number | null>(null);
@@ -77,9 +85,39 @@ export default function CartModal({
                 </li>
               ))}
             </ul>
-            <div className="mt-6 border-t pt-4">
-              <p className="text-lg font-bold">Total: ${totalPrice.toFixed(2)}</p>
-              <button onClick={onPlaceOrder} className="mt-4 w-full bg-teal-600 text-white py-2 rounded-lg">Place Order</button>
+            <div className="mt-6 border-t pt-4 space-y-3">
+              <p className="text-lg font-bold">Total: ₹{totalPrice.toFixed(2)}</p>
+
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Payment Options</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onPaymentMethodChange('gpay')}
+                    className={`border rounded-lg px-3 py-2 text-sm font-medium ${paymentMethod === 'gpay' ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-700 hover:border-teal-300'}`}
+                  >
+                    GPay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPaymentMethodChange('phonepe')}
+                    className={`border rounded-lg px-3 py-2 text-sm font-medium ${paymentMethod === 'phonepe' ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-700 hover:border-teal-300'}`}
+                  >
+                    PhonePe
+                  </button>
+                </div>
+              </div>
+
+              {orderError && <p className="text-sm text-red-600">{orderError}</p>}
+
+              <button
+                type="button"
+                onClick={onPlaceOrder}
+                disabled={isPlacingOrder}
+                className="mt-2 w-full bg-teal-600 text-white py-2 rounded-lg disabled:opacity-60"
+              >
+                {isPlacingOrder ? 'Placing Order...' : `Pay with ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'} & Place Order`}
+              </button>
             </div>
           </>
         )}

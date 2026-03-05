@@ -61,6 +61,9 @@ export default function App() {
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'gpay' | 'phonepe'>('gpay');
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
   const [location, setLocation] = useState('Delhi 110001');
   const [activeTab, setActiveTab] = useState('Medicines');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -196,24 +199,50 @@ export default function App() {
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const placeOrder = () => {
-    if (!user) return alert('Please log in to place an order');
+    if (!user) {
+      setOrderError('Please log in to place an order.');
+      return;
+    }
+
+    if (typeof user.id !== 'number') {
+      setOrderError('Order placement requires a linked account. Please re-login and try again.');
+      return;
+    }
+
+    if (cart.length === 0) {
+      setOrderError('Your cart is empty. Add medicines to continue.');
+      return;
+    }
+
+    setIsPlacingOrder(true);
+    setOrderError(null);
+
     fetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: user.id,
+        payment_method: paymentMethod,
         items: cart.map((item) => ({ medicine_id: item.id, quantity: item.quantity, price: item.price })),
         total_price: totalPrice,
       }),
-    }).then((res) => {
-      if (res.ok) {
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Unable to place order');
+        }
+        return res.json();
+      })
+      .then(() => {
         setCart([]);
         setShowCart(false);
-        alert('Order placed successfully!');
-      } else {
-        alert('Failed to place order');
-      }
-    });
+        setOrderError(null);
+        alert(`Order placed successfully via ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'}!`);
+      })
+      .catch(() => {
+        setOrderError('Failed to place order. Please try again.');
+      })
+      .finally(() => setIsPlacingOrder(false));
   };
 
   const updateProfile = (updatedUser: ProfileUser) => {
@@ -372,9 +401,16 @@ export default function App() {
         show={showCart}
         cart={cart}
         totalPrice={totalPrice}
-        onClose={() => setShowCart(false)}
+        paymentMethod={paymentMethod}
+        isPlacingOrder={isPlacingOrder}
+        orderError={orderError}
+        onClose={() => {
+          setShowCart(false);
+          setOrderError(null);
+        }}
         onUpdateQuantity={updateQuantity}
         onRemoveFromCart={removeFromCart}
+        onPaymentMethodChange={setPaymentMethod}
         onPlaceOrder={placeOrder}
       />
 
