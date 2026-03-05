@@ -36,14 +36,8 @@ interface ProfileUser {
   name: string;
   email?: string;
   profile_picture?: string;
-  given_name?: string;
-  family_name?: string;
-  locale?: string;
-  email_verified?: boolean;
-  provider?: string;
-  provider_user_id?: string;
-  oauth_attributes?: Record<string, unknown>;
 }
+
 
 interface Suggestion {
   id: number;
