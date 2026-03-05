@@ -52,6 +52,8 @@ interface Order {
   totalPrice: number;
   status?: string;
   createdAt?: string;
+  paymentStatus?: string;
+  transactionRef?: string;
   items: OrderItem[];
 }
 
@@ -78,6 +80,7 @@ export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [orderActionId, setOrderActionId] = useState<number | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [showCart, setShowCart] = useState(false);
@@ -85,6 +88,7 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<'gpay' | 'phonepe'>('gpay');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<number | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<RegisteredPaymentMethod[]>([]);
   const [isLoadingPaymentMethods, setIsLoadingPaymentMethods] = useState(false);
   const [isRegisteringPaymentMethod, setIsRegisteringPaymentMethod] = useState(false);
@@ -174,6 +178,8 @@ export default function App() {
               totalPrice: Number(order.totalPrice ?? order.total_price ?? 0),
               status: order.status,
               createdAt: order.createdAt ?? order.created_at,
+              paymentStatus: order.paymentStatus ?? order.payment_status,
+              transactionRef: order.transactionRef ?? order.transaction_ref,
               items: Array.isArray(order.items)
                 ? order.items.map((item: any) => ({
                     id: Number(item.id),
@@ -191,6 +197,51 @@ export default function App() {
         setOrdersError('Unable to load orders right now. Please try again.');
       })
       .finally(() => setOrdersLoading(false));
+  };
+
+
+  const cancelOrder = (orderId: number) => {
+    if (!user || typeof user.id !== 'number') return;
+
+    setOrderActionId(orderId);
+    setOrdersError(null);
+
+    fetch(`/api/orders/${orderId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.id }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to cancel order');
+        }
+      })
+      .then(() => fetchOrders())
+      .catch((error: Error) => setOrdersError(error.message || 'Unable to cancel order'))
+      .finally(() => setOrderActionId(null));
+  };
+
+  const refundOrder = (orderId: number) => {
+    if (!user || typeof user.id !== 'number') return;
+
+    setOrderActionId(orderId);
+    setOrdersError(null);
+
+    fetch(`/api/orders/${orderId}/refund`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.id }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to refund order');
+        }
+      })
+      .then(() => fetchOrders())
+      .catch((error: Error) => setOrdersError(error.message || 'Unable to refund order'))
+      .finally(() => setOrderActionId(null));
   };
 
   const fetchProfile = () => {
@@ -308,30 +359,65 @@ export default function App() {
     setIsPlacingOrder(true);
     setOrderError(null);
 
-    fetch('/api/orders', {
+    fetch('/api/payments/intents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: user.id,
         payment_method: paymentMethod,
-        items: cart.map((item) => ({ medicine_id: item.id, quantity: item.quantity, price: item.price })),
-        total_price: totalPrice,
+        amount: totalPrice,
       }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error('Unable to place order');
+      .then(async (intentRes) => {
+        if (!intentRes.ok) {
+          const body = await intentRes.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to create payment intent');
         }
-        return res.json();
+        return intentRes.json();
+      })
+      .then((intent) => {
+        setPaymentIntentId(Number(intent.id));
+        return fetch(`/api/payments/intents/${intent.id}/callback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'authorized', transaction_ref: intent.transaction_ref }),
+        }).then(async (callbackRes) => {
+          if (!callbackRes.ok) {
+            const body = await callbackRes.json().catch(() => ({}));
+            throw new Error(body.message || 'Payment authorization failed');
+          }
+          return intent;
+        });
+      })
+      .then((intent) => {
+        return fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            payment_method: paymentMethod,
+            payment_intent_id: intent.id,
+            items: cart.map((item) => ({ medicine_id: item.id, quantity: item.quantity, price: item.price })),
+            total_price: totalPrice,
+          }),
+        });
+      })
+      .then(async (orderRes) => {
+        if (!orderRes.ok) {
+          const body = await orderRes.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to place order');
+        }
+        return orderRes.json();
       })
       .then(() => {
         setCart([]);
         setShowCart(false);
+        setPaymentIntentId(null);
         setOrderError(null);
         alert(`Order placed successfully via ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'}!`);
       })
-      .catch(() => {
-        setOrderError('Failed to place order. Please try again.');
+      .catch((error: Error) => {
+        setOrderError(error.message || 'Failed to place order. Please try again.');
       })
       .finally(() => setIsPlacingOrder(false));
   };
@@ -451,10 +537,13 @@ export default function App() {
         orders={orders}
         loading={ordersLoading}
         error={ordersError}
+        actionOrderId={orderActionId}
         onClose={() => {
           setShowOrders(false);
           setOrdersError(null);
         }}
+        onCancelOrder={cancelOrder}
+        onRefundOrder={refundOrder}
       />
 
       {showLogin && (
@@ -508,6 +597,7 @@ export default function App() {
         onClose={() => {
           setShowCart(false);
           setOrderError(null);
+          setPaymentIntentId(null);
           setPaymentRegistrationError(null);
         }}
         onUpdateQuantity={updateQuantity}

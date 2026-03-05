@@ -13,6 +13,8 @@ interface Order {
   totalPrice: number;
   status?: string;
   createdAt?: string;
+  paymentStatus?: string;
+  transactionRef?: string;
   items: OrderItem[];
 }
 
@@ -21,7 +23,10 @@ interface OrdersModalProps {
   orders: Order[];
   loading?: boolean;
   error?: string | null;
+  actionOrderId?: number | null;
   onClose: () => void;
+  onCancelOrder: (orderId: number) => void;
+  onRefundOrder: (orderId: number) => void;
 }
 
 const statusClassMap: Record<string, string> = {
@@ -31,7 +36,7 @@ const statusClassMap: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-800',
 };
 
-export default function OrdersModal({ show, orders, loading = false, error = null, onClose }: OrdersModalProps) {
+export default function OrdersModal({ show, orders, loading = false, error = null, actionOrderId = null, onClose, onCancelOrder, onRefundOrder }: OrdersModalProps) {
   if (!show) return null;
 
   return (
@@ -81,6 +86,35 @@ export default function OrdersModal({ show, orders, loading = false, error = nul
                       <p className="text-gray-500">Created</p>
                       <p className="font-semibold flex items-center gap-1"><CalendarClock size={14} />{order.createdAt || '—'}</p>
                     </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {(order.transactionRef || order.paymentStatus) && (
+                      <span className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-full">
+                        {order.paymentStatus ? `Payment: ${order.paymentStatus}` : 'Payment status unavailable'}
+                        {order.transactionRef ? ` • Ref: ${order.transactionRef}` : ''}
+                      </span>
+                    )}
+                    {!['cancelled', 'refunded'].includes(normalizedStatus) && (
+                      <button
+                        type="button"
+                        onClick={() => onCancelOrder(order.id)}
+                        disabled={actionOrderId === order.id}
+                        className="text-xs bg-red-50 text-red-700 border border-red-200 px-2 py-1 rounded disabled:opacity-60"
+                      >
+                        Cancel Order
+                      </button>
+                    )}
+                    {!['refunded'].includes(normalizedStatus) && (order.paymentStatus || '').toLowerCase() === 'authorized' && (
+                      <button
+                        type="button"
+                        onClick={() => onRefundOrder(order.id)}
+                        disabled={actionOrderId === order.id}
+                        className="text-xs bg-violet-50 text-violet-700 border border-violet-200 px-2 py-1 rounded disabled:opacity-60"
+                      >
+                        Request Refund
+                      </button>
+                    )}
                   </div>
 
                   <ul className="mt-2 text-sm text-gray-700 divide-y bg-white rounded-lg border">
