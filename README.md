@@ -36,6 +36,14 @@ Frontend runs on `http://localhost:5173`.
 
 Vite proxies `/api/*` requests to Spring Boot.
 
+### OAuth redirect config
+
+Set `FRONTEND_URL` for backend OAuth success/logout redirects (default: `http://localhost:5173`).
+
+```bash
+export FRONTEND_URL="http://localhost:5173"
+```
+
 ## Useful scripts
 
 - `npm run dev` — start frontend (Vite)

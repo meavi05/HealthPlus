@@ -2,6 +2,7 @@ package com.healthplus.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +14,9 @@ import java.io.IOException;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    @Value("${app.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
 
     @GetMapping("/google")
     public void google(HttpServletResponse response) throws IOException {
@@ -30,6 +34,6 @@ public class AuthController {
         if (authentication != null) {
             new SecurityContextLogoutHandler().logout(request, response, authentication);
         }
-        response.sendRedirect("/");
+        response.sendRedirect(frontendUrl + "/");
     }
 }
