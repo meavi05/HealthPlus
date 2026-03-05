@@ -39,6 +39,22 @@ interface ProfileUser {
 }
 
 
+interface OrderItem {
+  id: number;
+  medicineName: string;
+  quantity: number;
+  price: number;
+}
+
+interface Order {
+  id: number;
+  userId: number;
+  totalPrice: number;
+  status?: string;
+  createdAt?: string;
+  items: OrderItem[];
+}
+
 interface RegisteredPaymentMethod {
   id: number;
   provider: 'gpay' | 'phonepe';
@@ -59,7 +75,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [showOrders, setShowOrders] = useState(false);
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -151,7 +167,24 @@ export default function App() {
         return res.json();
       })
       .then((data) => {
-        setOrders(Array.isArray(data) ? data : []);
+        const normalizedOrders: Order[] = Array.isArray(data)
+          ? data.map((order: any) => ({
+              id: Number(order.id),
+              userId: Number(order.userId ?? order.user_id ?? user?.id ?? 0),
+              totalPrice: Number(order.totalPrice ?? order.total_price ?? 0),
+              status: order.status,
+              createdAt: order.createdAt ?? order.created_at,
+              items: Array.isArray(order.items)
+                ? order.items.map((item: any) => ({
+                    id: Number(item.id),
+                    medicineName: item.medicineName ?? item.medicine_name ?? 'Medicine',
+                    quantity: Number(item.quantity ?? 0),
+                    price: Number(item.price ?? 0),
+                  }))
+                : [],
+            }))
+          : [];
+        setOrders(normalizedOrders);
       })
       .catch(() => {
         setOrders([]);
