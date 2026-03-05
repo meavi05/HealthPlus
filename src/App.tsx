@@ -42,6 +42,7 @@ interface ProfileUser {
   email_verified?: boolean;
   provider?: string;
   provider_user_id?: string;
+  oauth_attributes?: Record<string, unknown>;
 }
 
 interface Suggestion {

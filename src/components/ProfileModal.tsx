@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { User, X } from 'lucide-react';
 
 interface ProfileUser {
@@ -12,6 +12,7 @@ interface ProfileUser {
   email_verified?: boolean;
   provider?: string;
   provider_user_id?: string;
+  oauth_attributes?: Record<string, unknown>;
 }
 
 interface ProfileModalProps {
@@ -24,13 +25,37 @@ interface ProfileModalProps {
 export default function ProfileModal({ show, user, onClose, onSave }: ProfileModalProps) {
   const [editUser, setEditUser] = useState<ProfileUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [imageErrored, setImageErrored] = useState(false);
 
   useEffect(() => {
     if (show && user) {
       setEditUser(user);
       setIsEditing(false);
+      setImageErrored(false);
     }
   }, [show, user]);
+
+  const resolvedProfilePicture = useMemo(() => {
+    if (!editUser) return undefined;
+
+    if (editUser.profile_picture) return editUser.profile_picture;
+
+    const attrs = editUser.oauth_attributes;
+    if (!attrs) return undefined;
+
+    const picture = attrs.picture;
+    if (typeof picture === 'string' && picture.trim()) return picture;
+
+    if (picture && typeof picture === 'object') {
+      const data = (picture as { data?: { url?: string } }).data;
+      if (data?.url) return data.url;
+    }
+
+    const avatar = attrs.avatar_url;
+    if (typeof avatar === 'string' && avatar.trim()) return avatar;
+
+    return undefined;
+  }, [editUser]);
 
   if (!show || !editUser) return null;
 
@@ -55,8 +80,14 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
         <h3 className="text-xl font-semibold mb-4">User Profile</h3>
         <div className="flex flex-col gap-4">
           <div className="w-24 h-24 bg-gray-200 rounded-full mx-auto mb-2 flex items-center justify-center overflow-hidden">
-            {editUser.profile_picture ? (
-              <img src={editUser.profile_picture} alt="Profile" className="w-full h-full object-cover" />
+            {resolvedProfilePicture && !imageErrored ? (
+              <img
+                src={resolvedProfilePicture}
+                alt="Profile"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                onError={() => setImageErrored(true)}
+              />
             ) : (
               <User size={48} className="text-gray-400" />
             )}

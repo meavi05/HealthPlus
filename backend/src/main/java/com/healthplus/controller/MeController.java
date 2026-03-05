@@ -25,17 +25,20 @@ public class MeController {
             Map<String, Object> attributes = oauthUser.getAttributes();
             String provider = oauthToken.getAuthorizedClientRegistrationId();
 
+            String profilePicture = extractProfilePicture(attributes);
+            Object providerUserId = attributes.getOrDefault("sub", attributes.getOrDefault("id", null));
+
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("id", attributes.getOrDefault("sub", attributes.getOrDefault("id", authentication.getName())));
+            payload.put("id", providerUserId != null ? providerUserId : authentication.getName());
             payload.put("name", attributes.getOrDefault("name", authentication.getName()));
             payload.put("email", attributes.getOrDefault("email", null));
-            payload.put("profile_picture", attributes.getOrDefault("picture", null));
+            payload.put("profile_picture", profilePicture);
             payload.put("given_name", attributes.getOrDefault("given_name", null));
             payload.put("family_name", attributes.getOrDefault("family_name", null));
             payload.put("locale", attributes.getOrDefault("locale", null));
             payload.put("email_verified", attributes.getOrDefault("email_verified", null));
             payload.put("provider", provider);
-            payload.put("provider_user_id", attributes.getOrDefault("sub", attributes.getOrDefault("id", null)));
+            payload.put("provider_user_id", providerUserId);
             payload.put("oauth_attributes", attributes);
             return ResponseEntity.ok(payload);
         }
@@ -45,5 +48,30 @@ public class MeController {
                 "name", authentication.getName(),
                 "provider", "session"
         ));
+    }
+
+    private String extractProfilePicture(Map<String, Object> attributes) {
+        Object picture = attributes.get("picture");
+        if (picture instanceof String pictureUrl && !pictureUrl.isBlank()) {
+            return pictureUrl;
+        }
+
+        Object avatar = attributes.get("avatar_url");
+        if (avatar instanceof String avatarUrl && !avatarUrl.isBlank()) {
+            return avatarUrl;
+        }
+
+        Object facebookPicture = attributes.get("picture");
+        if (facebookPicture instanceof Map<?, ?> pictureMap) {
+            Object data = pictureMap.get("data");
+            if (data instanceof Map<?, ?> dataMap) {
+                Object url = dataMap.get("url");
+                if (url instanceof String stringUrl && !stringUrl.isBlank()) {
+                    return stringUrl;
+                }
+            }
+        }
+
+        return null;
     }
 }
