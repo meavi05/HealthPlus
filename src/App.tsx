@@ -17,6 +17,14 @@ interface Medicine {
   description: string;
   price: number;
   stock: number;
+  brand?: string;
+  category?: string;
+  mrp?: number;
+  discount_percent?: number;
+  requires_prescription?: boolean;
+  rating?: number;
+  image_url?: string;
+  delivery_eta?: string;
 }
 
 interface CartItem extends Medicine {
@@ -28,6 +36,11 @@ interface ProfileUser {
   name: string;
   email: string;
   profile_picture?: string;
+}
+
+interface Suggestion {
+  id: number;
+  name: string;
 }
 
 export default function App() {
@@ -48,17 +61,17 @@ export default function App() {
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [location, setLocation] = useState('Delhi 110001');
+  const [activeTab, setActiveTab] = useState('Medicines');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
 
   useEffect(() => {
     fetch('/api/me')
-      .then((res) => {
-        if (res.ok) return res.json();
-        return null;
-      })
-      .then((data) => {
-        console.log('User data fetched:', data);
-        setUser(data);
-      });
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setUser(data));
   }, []);
 
   useEffect(() => {
@@ -71,6 +84,33 @@ export default function App() {
         setIsLoading(false);
       });
   }, [currentPage, limit]);
+
+  useEffect(() => {
+    fetch('/api/medicines/categories')
+      .then((res) => res.json())
+      .then((data) => setCategories(data.map((item: { name: string }) => item.name).slice(0, 8)))
+      .catch(() => setCategories(['Fever', 'Diabetes', 'Cardiac', 'Wellness']));
+
+    fetch('/api/medicines/brands')
+      .then((res) => res.json())
+      .then((data) => setBrands(data.map((item: { name: string }) => item.name).slice(0, 6)))
+      .catch(() => setBrands(['Dolo', 'Cipla', 'Sun Pharma', 'Himalaya']));
+  }, []);
+
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      fetch(`/api/medicines/suggest?q=${encodeURIComponent(searchTerm)}`)
+        .then((res) => res.json())
+        .then((data) => setSuggestions(data || []))
+        .catch(() => setSuggestions([]));
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   const filteredMedicines = medicines.filter((medicine) =>
     medicine.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -87,7 +127,6 @@ export default function App() {
   };
 
   const fetchProfile = () => {
-    console.log('fetchProfile called, user:', user);
     if (!user) return alert('Please log in to view profile');
     setShowProfile(true);
   };
@@ -109,7 +148,7 @@ export default function App() {
         return [...prevCart, { ...medicine, quantity: 1 }];
       });
       setAddingToCart(null);
-    }, 500);
+    }, 300);
   };
 
   const updateQuantity = (id: number, quantity: number) => {
@@ -141,10 +180,9 @@ export default function App() {
       }),
     }).then((res) => {
       if (res.ok) {
-        if (window.confirm('Order placed successfully! Clear cart?')) {
-          setCart([]);
-        }
+        setCart([]);
         setShowCart(false);
+        alert('Order placed successfully!');
       } else {
         alert('Failed to place order');
       }
@@ -168,6 +206,13 @@ export default function App() {
     });
   };
 
+  const openMedicineDetails = (medicineId: number) => {
+    fetch(`/api/medicines/${medicineId}`)
+      .then((res) => res.json())
+      .then((data) => setSelectedMedicine(data))
+      .catch(() => setSelectedMedicine(medicines.find((m) => m.id === medicineId) || null));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
@@ -179,13 +224,51 @@ export default function App() {
         onFetchProfile={fetchProfile}
         onOpenLogin={() => setShowLogin(true)}
         onOpenCart={() => setShowCart(true)}
+        location={location}
+        onLocationChange={setLocation}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        suggestions={suggestions}
+        onSuggestionSelect={(value) => {
+          setSearchTerm(value);
+          setSuggestions([]);
+        }}
       />
 
-      <section className="bg-teal-50 py-12">
+      <section className="bg-gradient-to-r from-teal-50 to-emerald-50 py-10 border-b border-teal-100">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <h2 className="text-4xl font-bold text-gray-800 mb-4">Your Health, Our Priority</h2>
-          <p className="text-gray-600">Get genuine medicines delivered to your doorstep.</p>
+          <h2 className="text-4xl font-bold text-gray-800 mb-3">India&apos;s Trusted Digital Pharmacy Experience</h2>
+          <p className="text-gray-600">Medicines • Lab Tests • Doctor Consultations • Health Products</p>
         </div>
+      </section>
+
+      <section className="max-w-7xl mx-auto px-4 py-6 grid md:grid-cols-3 gap-4">
+        <div className="bg-white border rounded-xl p-4">
+          <h4 className="font-semibold mb-2">Popular Categories</h4>
+          <div className="flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <span key={category} className="text-xs bg-gray-100 px-2 py-1 rounded-full">{category}</span>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white border rounded-xl p-4">
+          <h4 className="font-semibold mb-2">Top Brands</h4>
+          <div className="flex flex-wrap gap-2">
+            {brands.map((brand) => (
+              <span key={brand} className="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded-full">{brand}</span>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white border rounded-xl p-4">
+          <h4 className="font-semibold mb-2">Daily Offers</h4>
+          <p className="text-sm text-gray-600">Save up to 25% on selected brands. Free delivery above ₹499.</p>
+        </div>
+      </section>
+
+      <section className="max-w-7xl mx-auto px-4 pb-2 grid md:grid-cols-3 gap-4 text-sm">
+        <div className="bg-white rounded-lg border p-3">✅ Genuine products from licensed pharmacies</div>
+        <div className="bg-white rounded-lg border p-3">🚚 Fast delivery in major cities</div>
+        <div className="bg-white rounded-lg border p-3">🧪 Book lab tests and track reports</div>
       </section>
 
       <ProductGrid
@@ -198,6 +281,7 @@ export default function App() {
         onNextPage={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalMedicines / limit)))}
         onAddToCart={addToCart}
         addingToCart={addingToCart}
+        onViewDetails={openMedicineDetails}
       />
 
       <OrdersModal show={showOrders} orders={orders} onClose={() => setShowOrders(false)} />
@@ -213,6 +297,28 @@ export default function App() {
               <a href="/api/auth/google" className="bg-red-500 text-white py-2 rounded-lg text-center">Login with Google</a>
               <a href="/api/auth/facebook" className="bg-blue-600 text-white py-2 rounded-lg text-center">Login with Facebook</a>
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedMedicine && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full p-6 relative">
+            <button type="button" className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={() => setSelectedMedicine(null)} aria-label="Close details">
+              <X size={20} />
+            </button>
+            <h3 className="text-2xl font-semibold">{selectedMedicine.name}</h3>
+            <p className="text-sm text-gray-600 mt-1">{selectedMedicine.brand} • {selectedMedicine.category}</p>
+            <p className="mt-4 text-gray-700">{selectedMedicine.description}</p>
+            <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
+              <div>Price: <strong>₹{selectedMedicine.price}</strong></div>
+              <div>MRP: <strong>₹{selectedMedicine.mrp || selectedMedicine.price}</strong></div>
+              <div>Rating: <strong>{selectedMedicine.rating || 4.0} / 5</strong></div>
+              <div>Delivery: <strong>{selectedMedicine.delivery_eta || 'Tomorrow'}</strong></div>
+            </div>
+            {selectedMedicine.requires_prescription && (
+              <p className="mt-4 text-orange-700 bg-orange-50 border border-orange-200 rounded p-2 text-sm">Prescription required for this medicine.</p>
+            )}
           </div>
         </div>
       )}

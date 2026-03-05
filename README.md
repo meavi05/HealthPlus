@@ -49,3 +49,4 @@ Vite proxies `/api/*` requests to Spring Boot.
 
 - Migration plan: `SPRING_BOOT_BACKEND_MIGRATION.md`
 - Executed phase report: `MIGRATION_EXECUTION_REPORT.md`
+- Tata 1mg alignment execution report: `TATA_1MG_ALIGNMENT_REPORT.md`

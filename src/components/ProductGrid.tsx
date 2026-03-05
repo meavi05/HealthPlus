@@ -6,6 +6,14 @@ interface Medicine {
   description: string;
   price: number;
   stock: number;
+  brand?: string;
+  category?: string;
+  mrp?: number;
+  discount_percent?: number;
+  requires_prescription?: boolean;
+  rating?: number;
+  image_url?: string;
+  delivery_eta?: string;
 }
 
 interface ProductGridProps {
@@ -18,6 +26,7 @@ interface ProductGridProps {
   onNextPage: () => void;
   onAddToCart: (medicine: Medicine) => void;
   addingToCart: number | null;
+  onViewDetails: (medicineId: number) => void;
 }
 
 export default function ProductGrid({
@@ -30,12 +39,9 @@ export default function ProductGrid({
   onNextPage,
   onAddToCart,
   addingToCart,
+  onViewDetails,
 }: ProductGridProps) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-
-  const handleCardClick = (medicine: Medicine) => {
-    console.log('Clicked:', medicine.name);
-  };
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
@@ -49,22 +55,35 @@ export default function ProductGrid({
               <div
                 key={medicine.id}
                 className={`bg-white p-4 rounded-xl shadow-sm border border-gray-100 transition-all cursor-pointer ${hoveredId === medicine.id ? 'shadow-lg scale-105' : 'hover:shadow-md'}`}
-                onClick={() => handleCardClick(medicine)}
+                onClick={() => onViewDetails(medicine.id)}
                 onMouseEnter={() => setHoveredId(medicine.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
-                <div className="h-40 bg-gray-100 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+                <div className="h-40 bg-gray-100 rounded-lg mb-4 flex items-center justify-center overflow-hidden relative">
                   <img
-                    src={`https://picsum.photos/seed/${medicine.name}/400/300`}
+                    src={medicine.image_url || `https://picsum.photos/seed/${medicine.name}/400/300`}
                     alt={medicine.name}
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                   />
+                  {medicine.requires_prescription && (
+                    <span className="absolute top-2 left-2 text-[10px] bg-orange-100 text-orange-700 px-2 py-1 rounded-full">Rx Required</span>
+                  )}
                 </div>
-                <h4 className="text-lg font-medium text-gray-900">{medicine.name}</h4>
-                <p className="text-sm text-gray-500 mt-1">{medicine.description}</p>
+                <p className="text-xs text-gray-500">{medicine.brand || 'HealthPlus'} • {medicine.category || 'General'}</p>
+                <h4 className="text-lg font-medium text-gray-900 mt-1">{medicine.name}</h4>
+                <p className="text-sm text-gray-500 mt-1 line-clamp-2">{medicine.description}</p>
+                <p className="text-xs text-emerald-700 mt-2">Delivery: {medicine.delivery_eta || 'Tomorrow'}</p>
                 <div className="flex items-center justify-between mt-4">
-                  <p className="text-lg font-bold text-gray-900">${medicine.price}</p>
+                  <div>
+                    <p className="text-lg font-bold text-gray-900">₹{medicine.price}</p>
+                    {medicine.mrp && medicine.mrp > medicine.price && (
+                      <p className="text-xs text-gray-500">
+                        <span className="line-through mr-1">₹{medicine.mrp}</span>
+                        <span className="text-green-700">{medicine.discount_percent || 0}% off</span>
+                      </p>
+                    )}
+                  </div>
                   <button
                     className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
                     disabled={addingToCart === medicine.id}
