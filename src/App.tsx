@@ -32,10 +32,16 @@ interface CartItem extends Medicine {
 }
 
 interface ProfileUser {
-  id: number;
+  id: number | string;
   name: string;
-  email: string;
+  email?: string;
   profile_picture?: string;
+  given_name?: string;
+  family_name?: string;
+  locale?: string;
+  email_verified?: boolean;
+  provider?: string;
+  provider_user_id?: string;
 }
 
 interface Suggestion {
@@ -191,6 +197,15 @@ export default function App() {
 
   const updateProfile = (updatedUser: ProfileUser) => {
     if (!user) return;
+
+    // OAuth-only identities (e.g., Google sub) may not map to numeric local DB users.
+    if (typeof user.id !== 'number') {
+      setUser(updatedUser);
+      setShowProfile(false);
+      alert('Profile updated locally for this session.');
+      return;
+    }
+
     fetch(`/api/users/${user.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

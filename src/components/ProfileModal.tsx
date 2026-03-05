@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react';
 import { User, X } from 'lucide-react';
 
 interface ProfileUser {
-  id: number;
+  id: number | string;
   name: string;
-  email: string;
+  email?: string;
   profile_picture?: string;
+  given_name?: string;
+  family_name?: string;
+  locale?: string;
+  email_verified?: boolean;
+  provider?: string;
+  provider_user_id?: string;
 }
 
 interface ProfileModalProps {
@@ -29,10 +35,12 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
   if (!show || !editUser) return null;
 
   const handleSave = () => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(editUser.email)) {
-      alert('Please enter a valid email address');
-      return;
+    if (editUser.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editUser.email)) {
+        alert('Please enter a valid email address');
+        return;
+      }
     }
     onSave(editUser);
     setIsEditing(false);
@@ -46,7 +54,7 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
         </button>
         <h3 className="text-xl font-semibold mb-4">User Profile</h3>
         <div className="flex flex-col gap-4">
-          <div className="w-24 h-24 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center overflow-hidden">
+          <div className="w-24 h-24 bg-gray-200 rounded-full mx-auto mb-2 flex items-center justify-center overflow-hidden">
             {editUser.profile_picture ? (
               <img src={editUser.profile_picture} alt="Profile" className="w-full h-full object-cover" />
             ) : (
@@ -55,14 +63,20 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
           </div>
           {isEditing ? (
             <>
-              <input type="text" value={editUser.name} onChange={(e) => setEditUser({ ...editUser, name: e.target.value })} className="border p-2 rounded" placeholder="Name" />
-              <input type="email" value={editUser.email} onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} className="border p-2 rounded" placeholder="Email" />
+              <input type="text" value={editUser.name || ''} onChange={(e) => setEditUser({ ...editUser, name: e.target.value })} className="border p-2 rounded" placeholder="Name" />
+              <input type="email" value={editUser.email || ''} onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} className="border p-2 rounded" placeholder="Email" />
               <input type="text" value={editUser.profile_picture || ''} onChange={(e) => setEditUser({ ...editUser, profile_picture: e.target.value })} className="border p-2 rounded" placeholder="Profile Picture URL" />
             </>
           ) : (
             <>
-              <p><strong>Name:</strong> {editUser.name}</p>
-              <p><strong>Email:</strong> {editUser.email}</p>
+              <p><strong>Name:</strong> {editUser.name || '-'}</p>
+              <p><strong>Email:</strong> {editUser.email || '-'}</p>
+              <p><strong>Given name:</strong> {editUser.given_name || '-'}</p>
+              <p><strong>Family name:</strong> {editUser.family_name || '-'}</p>
+              <p><strong>Locale:</strong> {editUser.locale || '-'}</p>
+              <p><strong>Email verified:</strong> {typeof editUser.email_verified === 'boolean' ? (editUser.email_verified ? 'Yes' : 'No') : '-'}</p>
+              <p><strong>Provider:</strong> {editUser.provider || '-'}</p>
+              <p className="break-all"><strong>Provider user id:</strong> {editUser.provider_user_id || '-'}</p>
             </>
           )}
         </div>
