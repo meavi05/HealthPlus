@@ -1,4 +1,5 @@
-import { MapPin, Menu, Search, ShoppingCart } from 'lucide-react';
+import { ChevronDown, MapPin, Menu, Search, ShoppingCart } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Suggestion {
   id: number;
@@ -11,7 +12,7 @@ interface AppHeaderProps {
   user: any;
   totalItems: number;
   onFetchOrders: () => void;
-  onPrescriptionClick: () => void;
+  onMyHealthSelect: (option: 'prescription' | 'routine') => void;
   onFetchProfile: () => void;
   onOpenLogin: () => void;
   onOpenCart: () => void;
@@ -21,7 +22,9 @@ interface AppHeaderProps {
   onTabChange: (tab: string) => void;
   suggestions: Suggestion[];
   onSuggestionSelect: (value: string) => void;
+  onOpenAdmin: () => void;
 }
+
 
 const tabs = ['Medicines', 'Lab Tests', 'Consult Doctor', 'Health Products'];
 
@@ -31,7 +34,7 @@ export default function AppHeader({
   user,
   totalItems,
   onFetchOrders,
-  onPrescriptionClick,
+  onMyHealthSelect,
   onFetchProfile,
   onOpenLogin,
   onOpenCart,
@@ -41,7 +44,11 @@ export default function AppHeader({
   onTabChange,
   suggestions,
   onSuggestionSelect,
+  onOpenAdmin,
 }: AppHeaderProps) {
+  const [myHealthOpen, setMyHealthOpen] = useState(false);
+  const myHealthMenuRef = useRef<HTMLDivElement | null>(null);
+
   const handleProfileIconClick = () => {
     if (user) {
       onFetchProfile();
@@ -50,27 +57,43 @@ export default function AppHeader({
     onOpenLogin();
   };
 
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (myHealthMenuRef.current && !myHealthMenuRef.current.contains(event.target as Node)) {
+        setMyHealthOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, []);
+
+  const chooseMyHealthOption = (option: 'prescription' | 'routine') => {
+    setMyHealthOpen(false);
+    onMyHealthSelect(option);
+  };
+
   return (
     <header className="bg-gradient-to-b from-[#eef7ff] to-white sticky top-0 z-50 border-b border-[#e6eef8]">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between text-sm">
-        <div className="flex items-center gap-2 text-slate-600 bg-white/90 border border-[#dfeaf7] rounded-full px-3 py-1.5 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between text-sm gap-2">
+        <div className="flex items-center gap-2 text-slate-600 bg-white/90 border border-[#dfeaf7] rounded-full px-3 py-1.5 shadow-sm w-full sm:w-auto">
           <MapPin size={16} className="text-teal-600" />
           <input
             value={location}
             onChange={(e) => onLocationChange(e.target.value)}
-            className="bg-transparent outline-none w-40"
+            className="bg-transparent outline-none w-full sm:w-40"
             placeholder="Enter delivery location"
           />
         </div>
         <p className="text-slate-500 hidden md:block">Care made simple • Verified pharmacy • Fast doorstep delivery</p>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Menu className="md:hidden" />
+      <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3 md:gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <Menu className="md:hidden shrink-0" />
           <h1 className="text-2xl font-bold text-teal-600">HealthPlus</h1>
         </div>
-        <div className="flex-1 max-w-md mx-4 relative">
+        <div className="order-3 md:order-2 basis-full md:basis-auto flex-1 md:max-w-md md:mx-4 relative">
           <div className="relative">
             <input
               type="text"
@@ -97,15 +120,47 @@ export default function AppHeader({
             </ul>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={onPrescriptionClick} className="text-slate-600 hover:text-[#2d7ff9]">Prescription</button>
+        <div className="order-2 md:order-3 flex items-center gap-2 sm:gap-3 ml-auto">
+          <div className="relative" ref={myHealthMenuRef}>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-slate-600 hover:text-[#2d7ff9] text-sm"
+              onClick={() => setMyHealthOpen((prev) => !prev)}
+            >
+              <span className="hidden sm:inline">My Health</span>
+              <span className="sm:hidden">Health</span>
+              <ChevronDown size={16} className={`transition-transform ${myHealthOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {myHealthOpen && (
+              <div className="absolute right-0 mt-2 w-48 sm:w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1">
+                <button
+                  type="button"
+                  onClick={() => chooseMyHealthOption('prescription')}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
+                >
+                  Prescription
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chooseMyHealthOption('routine')}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
+                >
+                  Medicine Routine
+                </button>
+              </div>
+            )}
+          </div>
           {user ? (
             <>
-              <button onClick={onFetchOrders} className="text-slate-600 hover:text-[#2d7ff9]">Track Order</button>
-              <a href="/api/auth/logout" className="text-slate-600 hover:text-[#2d7ff9]">Logout</a>
+              {user?.role === 'ROLE_ADMIN' && (
+                <button onClick={onOpenAdmin} className="text-slate-600 hover:text-[#2d7ff9] text-sm">Admin</button>
+              )}
+              <button onClick={onFetchOrders} className="text-slate-600 hover:text-[#2d7ff9] hidden sm:inline">Track Order</button>
+              <a href="/api/auth/logout" className="text-slate-600 hover:text-[#2d7ff9] text-sm">Logout</a>
             </>
           ) : (
-            <button onClick={onOpenLogin} className="text-slate-600 hover:text-[#2d7ff9]">Login</button>
+            <button onClick={onOpenLogin} className="text-slate-600 hover:text-[#2d7ff9] text-sm">Login</button>
           )}
           <button
             type="button"
@@ -129,26 +184,28 @@ export default function AppHeader({
           <div className="relative cursor-pointer" onClick={onOpenCart}>
             <ShoppingCart className="text-gray-600" />
             {totalItems > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                {totalItems}
-              </span>
+              <span className="absolute -top-2 -right-2 bg-teal-600 text-white text-xs rounded-full px-1.5">{totalItems}</span>
             )}
           </div>
         </div>
       </div>
 
-      <nav className="max-w-7xl mx-auto px-4 pb-3 flex gap-3 overflow-auto text-sm">
+      <div className="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => onTabChange(tab)}
-            className={`px-4 py-1.5 rounded-full whitespace-nowrap ${activeTab === tab ? 'bg-[#2d7ff9] text-white font-semibold' : 'bg-white border border-[#deebfb] text-slate-600 hover:text-[#2d7ff9]'}`}
+            className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition-colors ${
+              activeTab === tab
+                ? 'bg-[#e7f2ff] border-[#9cc4ff] text-[#2365d1]'
+                : 'bg-white border-[#e4edf8] text-slate-600 hover:text-[#2365d1]'
+            }`}
           >
             {tab}
           </button>
         ))}
-      </nav>
+      </div>
     </header>
   );
 }
