@@ -10,6 +10,7 @@ import ProductGrid from './components/ProductGrid';
 import OrdersModal from './components/OrdersModal';
 import CartModal from './components/CartModal';
 import ProfileModal from './components/ProfileModal';
+import PrescriptionModal from './components/PrescriptionModal';
 
 interface Medicine {
   id: number;
@@ -97,6 +98,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Medicines');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
 
   const cartStorageKey = useMemo(() => (user ? `cart_${user.id}` : 'cart_guest'), [user]);
 
@@ -441,7 +445,45 @@ export default function App() {
   }, [showCart, user]);
 
   const openPrescription = () => {
-    alert('Upload prescription flow will be available here.');
+    if (!user || typeof user.id !== 'number') {
+      setShowLogin(true);
+      return;
+    }
+    setPrescriptionError(null);
+    setShowPrescriptionModal(true);
+  };
+
+  const uploadPrescription = (files: File[]) => {
+    if (!user || typeof user.id !== 'number') {
+      setPrescriptionError('Please log in to upload a prescription.');
+      return;
+    }
+
+    setIsUploadingPrescription(true);
+    setPrescriptionError(null);
+
+    const formData = new FormData();
+    formData.append('user_id', String(user.id));
+    files.forEach((file) => formData.append('files', file));
+
+    fetch('/api/prescriptions/upload', {
+      method: 'POST',
+      body: formData,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to upload prescription');
+        }
+      })
+      .then(() => {
+        setShowPrescriptionModal(false);
+        alert('Prescription uploaded successfully.');
+      })
+      .catch((error: Error) => {
+        setPrescriptionError(error.message || 'Unable to upload prescription');
+      })
+      .finally(() => setIsUploadingPrescription(false));
   };
 
   const openMedicineDetails = (medicineId: number) => {
@@ -575,6 +617,18 @@ export default function App() {
         onPaymentMethodChange={setPaymentMethod}
         onRegisterPaymentMethod={registerPaymentMethod}
         onPlaceOrder={placeOrder}
+      />
+
+
+      <PrescriptionModal
+        show={showPrescriptionModal}
+        isUploading={isUploadingPrescription}
+        error={prescriptionError}
+        onClose={() => {
+          setShowPrescriptionModal(false);
+          setPrescriptionError(null);
+        }}
+        onSubmit={uploadPrescription}
       />
 
       <ProfileModal show={showProfile} user={user} onClose={() => setShowProfile(false)} onSave={updateProfile} />
