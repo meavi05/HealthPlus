@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS medicine_routines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  medicine_name TEXT NOT NULL,
+  last_taken_date TEXT NOT NULL,
+  next_due_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
