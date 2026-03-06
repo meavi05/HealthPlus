@@ -17,18 +17,14 @@ spring:
       client:
         registration:
           google:
-            client-id: "1042495404477-3t02enf39b7ms8e1lk6qbklusf37ipk0.apps.googleusercontent.com"
-              #            client-id: "dummy-id"
-            client-secret: "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"
-            #            client-secret: "dummy-secret"
+            client-id: "dummy-id"
+            client-secret: "dummy-secret"
             scope:
               - profile
               - email
           facebook:
-            client-id: "1042495404477-3t02enf39b7ms8e1lk6qbklusf37ipk0.apps.googleusercontent.com"
-              #            client-id: "dummy-id"
-            client-secret: "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"
-            #            client-secret: "dummy-secret"
+            client-id: "dummy-id"
+            client-secret: "dummy-secret"
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             scope:
