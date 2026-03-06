@@ -10,7 +10,7 @@ import ProductGrid from './components/ProductGrid';
 import OrdersModal from './components/OrdersModal';
 import CartModal from './components/CartModal';
 import ProfileModal from './components/ProfileModal';
-import PrescriptionModal from './components/PrescriptionModal';
+import MyHealthModal from './components/MyHealthModal';
 
 interface Medicine {
   id: number;
@@ -68,6 +68,14 @@ interface Suggestion {
   name: string;
 }
 
+interface MedicineRoutine {
+  id?: number;
+  medicine_name: string;
+  last_taken_date: string;
+  next_due_date: string;
+  status?: string;
+}
+
 export default function App() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [totalMedicines, setTotalMedicines] = useState(0);
@@ -98,9 +106,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Medicines');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
-  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [showMyHealthModal, setShowMyHealthModal] = useState(false);
   const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
   const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
+  const [routines, setRoutines] = useState<MedicineRoutine[]>([]);
+  const [routineError, setRoutineError] = useState<string | null>(null);
+  const [isSavingRoutine, setIsSavingRoutine] = useState(false);
 
   const cartStorageKey = useMemo(() => (user ? `cart_${user.id}` : 'cart_guest'), [user]);
 
@@ -444,13 +455,34 @@ export default function App() {
     }
   }, [showCart, user]);
 
-  const openPrescription = () => {
+  const loadRoutines = () => {
+    if (!user || typeof user.id !== 'number') {
+      setRoutines([]);
+      return;
+    }
+
+    fetch(`/api/my-health/routines?user_id=${user.id}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to load routines');
+        }
+        return res.json();
+      })
+      .then((data) => setRoutines(Array.isArray(data) ? data : []))
+      .catch((error: Error) => setRoutineError(error.message || 'Unable to load routines'));
+  };
+
+  const openMyHealth = () => {
     if (!user || typeof user.id !== 'number') {
       setShowLogin(true);
       return;
     }
+
     setPrescriptionError(null);
-    setShowPrescriptionModal(true);
+    setRoutineError(null);
+    setShowMyHealthModal(true);
+    loadRoutines();
   };
 
   const uploadPrescription = (files: File[]) => {
@@ -466,7 +498,7 @@ export default function App() {
     formData.append('user_id', String(user.id));
     files.forEach((file) => formData.append('files', file));
 
-    fetch('/api/prescriptions/upload', {
+    fetch('/api/my-health/prescriptions/upload', {
       method: 'POST',
       body: formData,
     })
@@ -477,13 +509,41 @@ export default function App() {
         }
       })
       .then(() => {
-        setShowPrescriptionModal(false);
         alert('Prescription uploaded successfully.');
       })
       .catch((error: Error) => {
         setPrescriptionError(error.message || 'Unable to upload prescription');
       })
       .finally(() => setIsUploadingPrescription(false));
+  };
+
+  const createRoutine = ({ medicineName, lastTakenDate }: { medicineName: string; lastTakenDate: string }) => {
+    if (!user || typeof user.id !== 'number') {
+      setRoutineError('Please log in to manage medicine routine.');
+      return;
+    }
+
+    setIsSavingRoutine(true);
+    setRoutineError(null);
+
+    fetch('/api/my-health/routines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: user.id,
+        medicine_name: medicineName,
+        last_taken_date: lastTakenDate,
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to save routine');
+        }
+      })
+      .then(() => loadRoutines())
+      .catch((error: Error) => setRoutineError(error.message || 'Unable to save routine'))
+      .finally(() => setIsSavingRoutine(false));
   };
 
   const openMedicineDetails = (medicineId: number) => {
@@ -501,7 +561,7 @@ export default function App() {
         user={user}
         totalItems={totalItems}
         onFetchOrders={fetchOrders}
-        onPrescriptionClick={openPrescription}
+        onMyHealthClick={openMyHealth}
         onFetchProfile={fetchProfile}
         onOpenLogin={() => setShowLogin(true)}
         onOpenCart={() => setShowCart(true)}
@@ -620,15 +680,20 @@ export default function App() {
       />
 
 
-      <PrescriptionModal
-        show={showPrescriptionModal}
-        isUploading={isUploadingPrescription}
-        error={prescriptionError}
+      <MyHealthModal
+        show={showMyHealthModal}
+        isUploadingPrescription={isUploadingPrescription}
+        prescriptionError={prescriptionError}
+        routines={routines}
+        routineError={routineError}
+        isSavingRoutine={isSavingRoutine}
         onClose={() => {
-          setShowPrescriptionModal(false);
+          setShowMyHealthModal(false);
           setPrescriptionError(null);
+          setRoutineError(null);
         }}
-        onSubmit={uploadPrescription}
+        onUploadPrescription={uploadPrescription}
+        onCreateRoutine={createRoutine}
       />
 
       <ProfileModal show={showProfile} user={user} onClose={() => setShowProfile(false)} onSave={updateProfile} />

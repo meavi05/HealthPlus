@@ -11,7 +11,7 @@ interface AppHeaderProps {
   user: any;
   totalItems: number;
   onFetchOrders: () => void;
-  onPrescriptionClick: () => void;
+  onMyHealthClick: () => void;
   onFetchProfile: () => void;
   onOpenLogin: () => void;
   onOpenCart: () => void;
@@ -31,7 +31,7 @@ export default function AppHeader({
   user,
   totalItems,
   onFetchOrders,
-  onPrescriptionClick,
+  onMyHealthClick,
   onFetchProfile,
   onOpenLogin,
   onOpenCart,
@@ -98,7 +98,7 @@ export default function AppHeader({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onPrescriptionClick} className="text-slate-600 hover:text-[#2d7ff9]">Prescription</button>
+          <button type="button" onClick={onMyHealthClick} className="text-slate-600 hover:text-[#2d7ff9]">My Health</button>
           {user ? (
             <>
               <button onClick={onFetchOrders} className="text-slate-600 hover:text-[#2d7ff9]">Track Order</button>
