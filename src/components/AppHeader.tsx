@@ -1,4 +1,5 @@
-import { MapPin, Menu, Search, ShoppingCart } from 'lucide-react';
+import { ChevronDown, MapPin, Menu, Search, ShoppingCart } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Suggestion {
   id: number;
@@ -11,7 +12,7 @@ interface AppHeaderProps {
   user: any;
   totalItems: number;
   onFetchOrders: () => void;
-  onMyHealthClick: () => void;
+  onMyHealthSelect: (option: 'prescription' | 'routine') => void;
   onFetchProfile: () => void;
   onOpenLogin: () => void;
   onOpenCart: () => void;
@@ -31,7 +32,7 @@ export default function AppHeader({
   user,
   totalItems,
   onFetchOrders,
-  onMyHealthClick,
+  onMyHealthSelect,
   onFetchProfile,
   onOpenLogin,
   onOpenCart,
@@ -42,12 +43,31 @@ export default function AppHeader({
   suggestions,
   onSuggestionSelect,
 }: AppHeaderProps) {
+  const [myHealthOpen, setMyHealthOpen] = useState(false);
+  const myHealthMenuRef = useRef<HTMLDivElement | null>(null);
+
   const handleProfileIconClick = () => {
     if (user) {
       onFetchProfile();
       return;
     }
     onOpenLogin();
+  };
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (myHealthMenuRef.current && !myHealthMenuRef.current.contains(event.target as Node)) {
+        setMyHealthOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, []);
+
+  const chooseMyHealthOption = (option: 'prescription' | 'routine') => {
+    setMyHealthOpen(false);
+    onMyHealthSelect(option);
   };
 
   return (
@@ -98,7 +118,35 @@ export default function AppHeader({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onMyHealthClick} className="text-slate-600 hover:text-[#2d7ff9]">My Health</button>
+          <div className="relative" ref={myHealthMenuRef}>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-slate-600 hover:text-[#2d7ff9]"
+              onClick={() => setMyHealthOpen((prev) => !prev)}
+            >
+              My Health
+              <ChevronDown size={16} className={`transition-transform ${myHealthOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {myHealthOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1">
+                <button
+                  type="button"
+                  onClick={() => chooseMyHealthOption('prescription')}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
+                >
+                  Prescription
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chooseMyHealthOption('routine')}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
+                >
+                  Medicine Routine
+                </button>
+              </div>
+            )}
+          </div>
           {user ? (
             <>
               <button onClick={onFetchOrders} className="text-slate-600 hover:text-[#2d7ff9]">Track Order</button>
@@ -129,26 +177,28 @@ export default function AppHeader({
           <div className="relative cursor-pointer" onClick={onOpenCart}>
             <ShoppingCart className="text-gray-600" />
             {totalItems > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                {totalItems}
-              </span>
+              <span className="absolute -top-2 -right-2 bg-teal-600 text-white text-xs rounded-full px-1.5">{totalItems}</span>
             )}
           </div>
         </div>
       </div>
 
-      <nav className="max-w-7xl mx-auto px-4 pb-3 flex gap-3 overflow-auto text-sm">
+      <div className="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => onTabChange(tab)}
-            className={`px-4 py-1.5 rounded-full whitespace-nowrap ${activeTab === tab ? 'bg-[#2d7ff9] text-white font-semibold' : 'bg-white border border-[#deebfb] text-slate-600 hover:text-[#2d7ff9]'}`}
+            className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition-colors ${
+              activeTab === tab
+                ? 'bg-[#e7f2ff] border-[#9cc4ff] text-[#2365d1]'
+                : 'bg-white border-[#e4edf8] text-slate-600 hover:text-[#2365d1]'
+            }`}
           >
             {tab}
           </button>
         ))}
-      </nav>
+      </div>
     </header>
   );
 }

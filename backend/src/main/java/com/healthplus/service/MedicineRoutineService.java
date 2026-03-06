@@ -17,18 +17,7 @@ public class MedicineRoutineService {
     }
 
     public List<Map<String, Object>> getRoutines(Long userId) {
-        if (userId == null) {
-            throw new IllegalArgumentException("user_id is required");
-        }
-
-        Integer userCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE id = ?",
-                Integer.class,
-                userId
-        );
-        if (userCount == null || userCount == 0) {
-            throw new IllegalArgumentException("User not found");
-        }
+        ensureUserExists(userId);
 
         return jdbcTemplate.queryForList(
                 "SELECT id, user_id, medicine_name, last_taken_date, next_due_date, status, created_at FROM medicine_routines WHERE user_id = ? ORDER BY id DESC",
@@ -36,18 +25,29 @@ public class MedicineRoutineService {
         );
     }
 
-    public Map<String, Object> createRoutine(Long userId, String medicineName, String lastTakenDateRaw) {
-        if (userId == null) {
-            throw new IllegalArgumentException("user_id is required");
-        }
-        Integer userCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE id = ?",
-                Integer.class,
+    public List<Map<String, Object>> getPurchasedMedicines(Long userId) {
+        ensureUserExists(userId);
+
+        return jdbcTemplate.queryForList(
+                """
+                SELECT
+                  m.id AS medicine_id,
+                  m.name AS medicine_name,
+                  MAX(date(o.created_at)) AS last_purchased_at,
+                  COUNT(DISTINCT o.id) AS purchase_count
+                FROM orders o
+                JOIN order_items oi ON oi.order_id = o.id
+                JOIN medicines m ON m.id = oi.medicine_id
+                WHERE o.user_id = ?
+                GROUP BY m.id, m.name
+                ORDER BY date(last_purchased_at) DESC, m.name
+                """,
                 userId
         );
-        if (userCount == null || userCount == 0) {
-            throw new IllegalArgumentException("User not found");
-        }
+    }
+
+    public Map<String, Object> createRoutine(Long userId, String medicineName, String lastTakenDateRaw) {
+        ensureUserExists(userId);
 
         if (medicineName == null || medicineName.isBlank()) {
             throw new IllegalArgumentException("medicine_name is required");
@@ -80,5 +80,20 @@ public class MedicineRoutineService {
                 "next_due_date", nextDueDate.toString(),
                 "status", "active"
         );
+    }
+
+    private void ensureUserExists(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("user_id is required");
+        }
+
+        Integer userCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE id = ?",
+                Integer.class,
+                userId
+        );
+        if (userCount == null || userCount == 0) {
+            throw new IllegalArgumentException("User not found");
+        }
     }
 }

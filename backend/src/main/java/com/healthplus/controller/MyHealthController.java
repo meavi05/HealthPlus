@@ -43,6 +43,16 @@ public class MyHealthController {
         }
     }
 
+
+    @GetMapping("/medicines")
+    public ResponseEntity<?> getUserMedicines(@RequestParam("user_id") Long userId) {
+        try {
+            return ResponseEntity.ok(medicineRoutineService.getPurchasedMedicines(userId));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
     @PostMapping("/routines")
     public ResponseEntity<?> createRoutine(@RequestBody Map<String, Object> request) {
         try {

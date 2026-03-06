@@ -76,6 +76,13 @@ interface MedicineRoutine {
   status?: string;
 }
 
+interface PurchasedMedicine {
+  medicine_id: number;
+  medicine_name: string;
+  last_purchased_at: string;
+  purchase_count: number;
+}
+
 export default function App() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [totalMedicines, setTotalMedicines] = useState(0);
@@ -109,7 +116,9 @@ export default function App() {
   const [showMyHealthModal, setShowMyHealthModal] = useState(false);
   const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
   const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
+  const [myHealthSection, setMyHealthSection] = useState<'prescription' | 'routine'>('prescription');
   const [routines, setRoutines] = useState<MedicineRoutine[]>([]);
+  const [purchasedMedicines, setPurchasedMedicines] = useState<PurchasedMedicine[]>([]);
   const [routineError, setRoutineError] = useState<string | null>(null);
   const [isSavingRoutine, setIsSavingRoutine] = useState(false);
 
@@ -473,16 +482,39 @@ export default function App() {
       .catch((error: Error) => setRoutineError(error.message || 'Unable to load routines'));
   };
 
-  const openMyHealth = () => {
+  const loadPurchasedMedicines = () => {
+    if (!user || typeof user.id !== 'number') {
+      setPurchasedMedicines([]);
+      return;
+    }
+
+    fetch(`/api/my-health/medicines?user_id=${user.id}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to load purchased medicines');
+        }
+        return res.json();
+      })
+      .then((data) => setPurchasedMedicines(Array.isArray(data) ? data : []))
+      .catch((error: Error) => setRoutineError(error.message || 'Unable to load purchased medicines'));
+  };
+
+  const openMyHealth = (section: 'prescription' | 'routine') => {
     if (!user || typeof user.id !== 'number') {
       setShowLogin(true);
       return;
     }
 
+    setMyHealthSection(section);
     setPrescriptionError(null);
     setRoutineError(null);
     setShowMyHealthModal(true);
-    loadRoutines();
+
+    if (section === 'routine') {
+      loadRoutines();
+      loadPurchasedMedicines();
+    }
   };
 
   const uploadPrescription = (files: File[]) => {
@@ -541,7 +573,10 @@ export default function App() {
           throw new Error(body.message || 'Unable to save routine');
         }
       })
-      .then(() => loadRoutines())
+      .then(() => {
+        loadRoutines();
+        loadPurchasedMedicines();
+      })
       .catch((error: Error) => setRoutineError(error.message || 'Unable to save routine'))
       .finally(() => setIsSavingRoutine(false));
   };
@@ -561,7 +596,7 @@ export default function App() {
         user={user}
         totalItems={totalItems}
         onFetchOrders={fetchOrders}
-        onMyHealthClick={openMyHealth}
+        onMyHealthSelect={openMyHealth}
         onFetchProfile={fetchProfile}
         onOpenLogin={() => setShowLogin(true)}
         onOpenCart={() => setShowCart(true)}
@@ -682,9 +717,11 @@ export default function App() {
 
       <MyHealthModal
         show={showMyHealthModal}
+        activeSection={myHealthSection}
         isUploadingPrescription={isUploadingPrescription}
         prescriptionError={prescriptionError}
         routines={routines}
+        purchasedMedicines={purchasedMedicines}
         routineError={routineError}
         isSavingRoutine={isSavingRoutine}
         onClose={() => {
