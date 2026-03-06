@@ -10,6 +10,8 @@ import ProductGrid from './components/ProductGrid';
 import OrdersModal from './components/OrdersModal';
 import CartModal from './components/CartModal';
 import ProfileModal from './components/ProfileModal';
+import MyHealthModal from './components/MyHealthModal';
+import AdminPanel from './components/AdminPanel';
 
 interface Medicine {
   id: number;
@@ -36,6 +38,7 @@ interface ProfileUser {
   name: string;
   email?: string;
   profile_picture?: string;
+  role?: 'ROLE_ADMIN' | 'ROLE_USER';
 }
 
 
@@ -65,6 +68,21 @@ interface RegisteredPaymentMethod {
 interface Suggestion {
   id: number;
   name: string;
+}
+
+interface MedicineRoutine {
+  id?: number;
+  medicine_name: string;
+  last_taken_date: string;
+  next_due_date: string;
+  status?: string;
+}
+
+interface PurchasedMedicine {
+  medicine_id: number;
+  medicine_name: string;
+  last_purchased_at: string;
+  purchase_count: number;
 }
 
 export default function App() {
@@ -97,6 +115,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Medicines');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
+  const [showMyHealthModal, setShowMyHealthModal] = useState(false);
+  const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
+  const [myHealthSection, setMyHealthSection] = useState<'prescription' | 'routine'>('prescription');
+  const [routines, setRoutines] = useState<MedicineRoutine[]>([]);
+  const [purchasedMedicines, setPurchasedMedicines] = useState<PurchasedMedicine[]>([]);
+  const [routineError, setRoutineError] = useState<string | null>(null);
+  const [isSavingRoutine, setIsSavingRoutine] = useState(false);
+  const [activeView, setActiveView] = useState<'store' | 'admin'>('store');
 
   const cartStorageKey = useMemo(() => (user ? `cart_${user.id}` : 'cart_guest'), [user]);
 
@@ -136,6 +163,16 @@ export default function App() {
     medicine.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+
+  useEffect(() => {
+    const syncView = () => {
+      setActiveView(window.location.hash === '#/admin' ? 'admin' : 'store');
+    };
+    syncView();
+    window.addEventListener('hashchange', syncView);
+    return () => window.removeEventListener('hashchange', syncView);
+  }, []);
+
   const fetchOrders = () => {
     setShowOrders(true);
 
@@ -149,7 +186,7 @@ export default function App() {
     setOrdersLoading(true);
     setOrdersError(null);
 
-    fetch(`/api/orders/${user.id}`)
+    fetch('/api/orders/me')
       .then((res) => {
         if (!res.ok) {
           throw new Error('Unable to load orders right now.');
@@ -195,7 +232,6 @@ export default function App() {
     fetch(`/api/orders/${orderId}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: user.id }),
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -217,7 +253,6 @@ export default function App() {
     fetch(`/api/orders/${orderId}/refund`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: user.id }),
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -285,7 +320,7 @@ export default function App() {
     }
 
     setIsLoadingPaymentMethods(true);
-    fetch(`/api/users/${user.id}/payment-methods`)
+    fetch('/api/users/me/payment-methods')
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setPaymentMethods(Array.isArray(data) ? data : []))
       .catch(() => setPaymentMethods([]))
@@ -301,7 +336,7 @@ export default function App() {
     setPaymentRegistrationError(null);
     setIsRegisteringPaymentMethod(true);
 
-    fetch(`/api/users/${user.id}/payment-methods`, {
+    fetch('/api/users/me/payment-methods', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider, upi_vpa: upiId.trim() }),
@@ -349,7 +384,6 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_id: user.id,
         payment_method: paymentMethod,
         amount: totalPrice,
       }),
@@ -380,7 +414,6 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: user.id,
             payment_method: paymentMethod,
             payment_intent_id: intent.id,
             items: cart.map((item) => ({ medicine_id: item.id, quantity: item.quantity, price: item.price })),
@@ -419,7 +452,7 @@ export default function App() {
       return;
     }
 
-    fetch(`/api/users/${user.id}`, {
+    fetch('/api/users/me', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedUser),
@@ -440,8 +473,137 @@ export default function App() {
     }
   }, [showCart, user]);
 
-  const openPrescription = () => {
-    alert('Upload prescription flow will be available here.');
+  useEffect(() => {
+    if (activeView === 'admin' && user?.role !== 'ROLE_ADMIN') {
+      window.location.hash = '/';
+    }
+  }, [activeView, user]);
+
+  const loadRoutines = () => {
+    if (!user || typeof user.id !== 'number') {
+      setRoutines([]);
+      return;
+    }
+
+    fetch('/api/my-health/routines')
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to load routines');
+        }
+        return res.json();
+      })
+      .then((data) => setRoutines(Array.isArray(data) ? data : []))
+      .catch((error: Error) => setRoutineError(error.message || 'Unable to load routines'));
+  };
+
+  const loadPurchasedMedicines = () => {
+    if (!user || typeof user.id !== 'number') {
+      setPurchasedMedicines([]);
+      return;
+    }
+
+    fetch('/api/my-health/medicines')
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to load purchased medicines');
+        }
+        return res.json();
+      })
+      .then((data) => setPurchasedMedicines(Array.isArray(data) ? data : []))
+      .catch((error: Error) => setRoutineError(error.message || 'Unable to load purchased medicines'));
+  };
+
+  const openMyHealth = (section: 'prescription' | 'routine') => {
+    if (!user || typeof user.id !== 'number') {
+      setShowLogin(true);
+      return;
+    }
+
+    setMyHealthSection(section);
+    setPrescriptionError(null);
+    setRoutineError(null);
+    setShowMyHealthModal(true);
+
+    if (section === 'routine') {
+      loadRoutines();
+      loadPurchasedMedicines();
+    }
+  };
+
+  const uploadPrescription = (files: File[]) => {
+    if (!user || typeof user.id !== 'number') {
+      setPrescriptionError('Please log in to upload a prescription.');
+      return;
+    }
+
+    setIsUploadingPrescription(true);
+    setPrescriptionError(null);
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+
+    fetch('/api/my-health/prescriptions/upload', {
+      method: 'POST',
+      body: formData,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to upload prescription');
+        }
+      })
+      .then(() => {
+        alert('Prescription uploaded successfully.');
+      })
+      .catch((error: Error) => {
+        setPrescriptionError(error.message || 'Unable to upload prescription');
+      })
+      .finally(() => setIsUploadingPrescription(false));
+  };
+
+  const createRoutine = ({ medicineName, lastTakenDate }: { medicineName: string; lastTakenDate: string }) => {
+    if (!user || typeof user.id !== 'number') {
+      setRoutineError('Please log in to manage medicine routine.');
+      return;
+    }
+
+    setIsSavingRoutine(true);
+    setRoutineError(null);
+
+    fetch('/api/my-health/routines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        medicine_name: medicineName,
+        last_taken_date: lastTakenDate,
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to save routine');
+        }
+      })
+      .then(() => {
+        loadRoutines();
+        loadPurchasedMedicines();
+      })
+      .catch((error: Error) => setRoutineError(error.message || 'Unable to save routine'))
+      .finally(() => setIsSavingRoutine(false));
+  };
+
+  const openAdmin = () => {
+    if (user?.role === 'ROLE_ADMIN') {
+      window.location.hash = '/admin';
+      return;
+    }
+    alert('Admin access required');
+  };
+
+  const openStore = () => {
+    window.location.hash = '/';
   };
 
   const openMedicineDetails = (medicineId: number) => {
@@ -459,7 +621,7 @@ export default function App() {
         user={user}
         totalItems={totalItems}
         onFetchOrders={fetchOrders}
-        onPrescriptionClick={openPrescription}
+        onMyHealthSelect={openMyHealth}
         onFetchProfile={fetchProfile}
         onOpenLogin={() => setShowLogin(true)}
         onOpenCart={() => setShowCart(true)}
@@ -472,9 +634,24 @@ export default function App() {
           setSearchTerm(value);
           setSuggestions([]);
         }}
+        onOpenAdmin={openAdmin}
       />
 
 
+      {activeView === 'admin' ? (
+        <>
+          <section className="max-w-7xl mx-auto px-4 pt-2 pb-4">
+            <div className="bg-white border border-[#dfeafb] rounded-3xl p-4 md:p-5 shadow-sm flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-slate-500">Administrator zone</p>
+                <h2 className="text-xl md:text-2xl font-semibold text-slate-800">Control center</h2>
+              </div>
+              <button type="button" onClick={openStore} className="px-3 py-2 rounded-lg bg-[#edf4ff] text-[#2365d1]">Back to Store</button>
+            </div>
+          </section>
+          <AdminPanel show={true} />
+        </>
+      ) : (
       <section className="max-w-7xl mx-auto px-4 pt-2 pb-4">
         <div className="bg-white border border-[#dfeafb] rounded-3xl p-4 md:p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -577,7 +754,27 @@ export default function App() {
         onPlaceOrder={placeOrder}
       />
 
+
+      <MyHealthModal
+        show={showMyHealthModal}
+        activeSection={myHealthSection}
+        isUploadingPrescription={isUploadingPrescription}
+        prescriptionError={prescriptionError}
+        routines={routines}
+        purchasedMedicines={purchasedMedicines}
+        routineError={routineError}
+        isSavingRoutine={isSavingRoutine}
+        onClose={() => {
+          setShowMyHealthModal(false);
+          setPrescriptionError(null);
+          setRoutineError(null);
+        }}
+        onUploadPrescription={uploadPrescription}
+        onCreateRoutine={createRoutine}
+      />
+
       <ProfileModal show={showProfile} user={user} onClose={() => setShowProfile(false)} onSave={updateProfile} />
+      )}
     </div>
   );
 }
