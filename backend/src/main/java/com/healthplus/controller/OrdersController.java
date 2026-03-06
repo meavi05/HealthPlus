@@ -37,10 +37,10 @@ public class OrdersController {
             LocalUser current = localUserService.resolveOrCreate(authentication);
             CreateOrderRequest normalized = new CreateOrderRequest(
                     current.id(),
-                    request.items(),
-                    request.totalPrice(),
                     request.paymentMethod(),
-                    request.paymentIntentId()
+                    request.paymentIntentId(),
+                    request.items(),
+                    request.totalPrice()
             );
             Long orderId = orderService.createOrder(normalized);
             return ResponseEntity.status(HttpStatus.CREATED).body(new OrderCreateResponse(orderId));

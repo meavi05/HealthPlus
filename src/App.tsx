@@ -652,6 +652,7 @@ export default function App() {
           <AdminPanel show={true} />
         </>
       ) : (
+      <>
       <section className="max-w-7xl mx-auto px-4 pt-2 pb-4">
         <div className="bg-white border border-[#dfeafb] rounded-3xl p-4 md:p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -774,6 +775,7 @@ export default function App() {
       />
 
       <ProfileModal show={showProfile} user={user} onClose={() => setShowProfile(false)} onSave={updateProfile} />
+      </>
       )}
     </div>
   );
