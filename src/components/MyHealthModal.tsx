@@ -114,9 +114,9 @@ export default function MyHealthModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-xl border border-gray-200 max-h-[88vh] overflow-auto">
-        <div className="sticky top-0 bg-white/95 backdrop-blur border-b px-6 py-4 flex items-center justify-between z-10">
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl max-w-3xl w-full shadow-xl border border-gray-200 max-h-[92vh] sm:max-h-[88vh] overflow-auto">
+        <div className="sticky top-0 bg-white/95 backdrop-blur border-b px-4 sm:px-6 py-4 flex items-center justify-between z-10">
           <div>
             <h3 className="text-xl font-semibold text-slate-800">My Health</h3>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -128,11 +128,11 @@ export default function MyHealthModal({
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {activeSection === 'prescription' ? (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">{prescriptionHelper}</p>
-              <label className="block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-teal-500 transition-colors bg-[#fafcfe]">
+              <label className="block border-2 border-dashed border-gray-300 rounded-xl p-5 sm:p-8 text-center cursor-pointer hover:border-teal-500 transition-colors bg-[#fafcfe]">
                 <FileUp className="mx-auto text-gray-500 mb-2" />
                 <span className="text-sm text-gray-700">Choose prescription files</span>
                 <input type="file" className="hidden" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} />
@@ -174,7 +174,7 @@ export default function MyHealthModal({
                 </p>
               </div>
 
-              <div className="grid lg:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs text-gray-500">Medicine name</label>
@@ -218,7 +218,7 @@ export default function MyHealthModal({
                   {purchasedMedicines.length === 0 ? (
                     <p className="text-sm text-gray-500">No purchased medicines found yet.</p>
                   ) : (
-                    <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                    <div className="space-y-2 max-h-56 sm:max-h-64 overflow-auto pr-1">
                       {purchasedMedicines.map((medicine) => (
                         <button
                           key={`${medicine.medicine_id}-${medicine.last_purchased_at}`}
