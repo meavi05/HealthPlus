@@ -12,12 +12,30 @@ interface PrescriptionRow {
   file_count: number;
 }
 
+interface ReceiptStep {
+  stage: string;
+  status: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+interface ReceiptResult {
+  message?: string;
+  summary?: Record<string, unknown>;
+  steps?: ReceiptStep[];
+  rows?: Array<Record<string, unknown>>;
+}
+
 export default function AdminPanel({ show }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [medicines, setMedicines] = useState<any[]>([]);
   const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [inventoryReceiptFile, setInventoryReceiptFile] = useState<File | null>(null);
+  const [inventoryUploadLoading, setInventoryUploadLoading] = useState(false);
+  const [inventoryUploadError, setInventoryUploadError] = useState<string | null>(null);
+  const [receiptResult, setReceiptResult] = useState<ReceiptResult | null>(null);
 
   const load = () => {
     Promise.all([
@@ -53,6 +71,36 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       .catch((err: Error) => setError(err.message));
   };
 
+  const uploadInventoryReceipt = () => {
+    if (!inventoryReceiptFile) {
+      setInventoryUploadError('Please choose a bill receipt file first.');
+      return;
+    }
+
+    setInventoryUploadLoading(true);
+    setInventoryUploadError(null);
+    setReceiptResult(null);
+
+    const formData = new FormData();
+    formData.append('file', inventoryReceiptFile);
+
+    fetch('/api/admin/inventory/ocr-upload', {
+      method: 'POST',
+      body: formData,
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body.message || 'Failed to process inventory receipt');
+        }
+        setReceiptResult(body);
+        setInventoryReceiptFile(null);
+        load();
+      })
+      .catch((err: Error) => setInventoryUploadError(err.message))
+      .finally(() => setInventoryUploadLoading(false));
+  };
+
   if (!show) return null;
 
   return (
@@ -63,6 +111,56 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <div className="bg-white rounded-xl border p-4 space-y-3">
+        <h3 className="font-semibold">Inventory Intake via OCR</h3>
+        <p className="text-sm text-slate-500">
+          Upload a medical agency bill receipt (image/pdf) to OCR rows and insert/update inventory. CSV/TXT is also supported.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <input
+            type="file"
+            accept="image/*,.pdf,.csv,.txt"
+            onChange={(event) => setInventoryReceiptFile(event.target.files?.[0] || null)}
+            className="text-sm"
+          />
+          <button
+            type="button"
+            onClick={uploadInventoryReceipt}
+            disabled={inventoryUploadLoading}
+            className="px-3 py-2 text-sm rounded bg-[#2d7ff9] text-white disabled:opacity-60"
+          >
+            {inventoryUploadLoading ? 'Processing OCR…' : 'Upload & Process'}
+          </button>
+        </div>
+
+        {inventoryUploadError && <p className="text-sm text-red-600">{inventoryUploadError}</p>}
+
+        {receiptResult && (
+          <div className="space-y-2 border rounded-lg p-3 bg-slate-50">
+            <p className="text-sm font-medium text-slate-700">{receiptResult.message || 'Receipt processed'}</p>
+
+            {Array.isArray(receiptResult.steps) && receiptResult.steps.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Step-by-step outcomes</p>
+                {receiptResult.steps.map((step, index) => (
+                  <div key={`${step.stage}-${index}`} className="rounded border bg-white p-2 text-sm">
+                    <p className="font-medium text-slate-700">{step.stage} • {step.status}</p>
+                    <p className="text-slate-600">{step.message}</p>
+                    {step.details && (
+                      <pre className="mt-1 text-xs text-slate-500 overflow-x-auto">{JSON.stringify(step.details, null, 2)}</pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {receiptResult.summary && (
+              <pre className="text-xs text-slate-600 overflow-x-auto">{JSON.stringify(receiptResult.summary, null, 2)}</pre>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border p-4 overflow-auto">
