@@ -12,12 +12,30 @@ interface PrescriptionRow {
   file_count: number;
 }
 
+interface InventoryBill {
+  id: number;
+  agency_name?: string;
+  invoice_number?: string;
+  invoice_date?: string;
+  status: string;
+  ocr_status: string;
+  created_at: string;
+}
+
 export default function AdminPanel({ show }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [medicines, setMedicines] = useState<any[]>([]);
   const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
+  const [inventoryBills, setInventoryBills] = useState<InventoryBill[]>([]);
+  const [uploadingBill, setUploadingBill] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const [billFile, setBillFile] = useState<File | null>(null);
+  const [agencyName, setAgencyName] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
 
   const load = () => {
     Promise.all([
@@ -25,12 +43,14 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       fetch('/api/admin/orders').then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load orders')))),
       fetch('/api/admin/medicines').then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load medicines')))),
       fetch('/api/admin/prescriptions').then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load prescriptions')))),
+      fetch('/api/admin/inventory/bills').then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load inventory bills')))),
     ])
-      .then(([usersData, ordersData, medicinesData, prescriptionsData]) => {
+      .then(([usersData, ordersData, medicinesData, prescriptionsData, billsData]) => {
         setUsers(Array.isArray(usersData) ? usersData : []);
         setOrders(Array.isArray(ordersData) ? ordersData : []);
         setMedicines(Array.isArray(medicinesData) ? medicinesData : []);
         setPrescriptions(Array.isArray(prescriptionsData) ? prescriptionsData : []);
+        setInventoryBills(Array.isArray(billsData) ? billsData : []);
         setError(null);
       })
       .catch((err: Error) => setError(err.message));
@@ -53,6 +73,86 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       .catch((err: Error) => setError(err.message));
   };
 
+  const uploadInventoryBill = () => {
+    if (!billFile) {
+      setError('Please choose a bill file to upload.');
+      return;
+    }
+
+    setUploadingBill(true);
+    setError(null);
+    setSuccess(null);
+
+    const formData = new FormData();
+    formData.append('file', billFile);
+    if (agencyName.trim()) formData.append('agency_name', agencyName.trim());
+    if (invoiceNumber.trim()) formData.append('invoice_number', invoiceNumber.trim());
+    if (invoiceDate) formData.append('invoice_date', invoiceDate);
+
+    fetch('/api/admin/inventory/bills/upload', {
+      method: 'POST',
+      body: formData,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Failed to upload bill');
+        }
+      })
+      .then(() => {
+        setSuccess('Agency bill uploaded. Add bill items and import to update inventory.');
+        setBillFile(null);
+        setAgencyName('');
+        setInvoiceNumber('');
+        setInvoiceDate('');
+        load();
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setUploadingBill(false));
+  };
+
+  const addQuickBillItem = (billId: number) => {
+    fetch(`/api/admin/inventory/bills/${billId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        raw_medicine_name: 'New Medicine',
+        normalized_medicine_name: 'New Medicine',
+        quantity: 10,
+        purchase_price: 10,
+        mrp: 12,
+        resolution_status: 'ready',
+        notes: 'Created from quick-add in admin panel',
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Failed to add bill item');
+        }
+      })
+      .then(() => {
+        setSuccess(`Added starter item to bill #${billId}. Edit through API/detail screen as needed.`);
+      })
+      .catch((err: Error) => setError(err.message));
+  };
+
+  const importBill = (billId: number) => {
+    fetch(`/api/admin/inventory/bills/${billId}/import`, { method: 'POST' })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Failed to import bill');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setSuccess(`Bill #${billId} imported. Items imported: ${data.imported_items || 0}`);
+        load();
+      })
+      .catch((err: Error) => setError(err.message));
+  };
+
   if (!show) return null;
 
   return (
@@ -63,6 +163,41 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {success && <p className="text-sm text-green-700">{success}</p>}
+
+      <div className="bg-white rounded-xl border p-4 space-y-3">
+        <h3 className="font-semibold">Inventory Intake (Agency Bills)</h3>
+        <p className="text-sm text-slate-500">Upload agency bills, add line-items, then import to update medicine stock.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setBillFile(e.target.files?.[0] || null)} className="border rounded-lg p-2 text-sm" />
+          <input value={agencyName} onChange={(e) => setAgencyName(e.target.value)} placeholder="Agency name" className="border rounded-lg p-2 text-sm" />
+          <input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Invoice #" className="border rounded-lg p-2 text-sm" />
+          <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="border rounded-lg p-2 text-sm" />
+        </div>
+        <button type="button" onClick={uploadInventoryBill} disabled={uploadingBill} className="px-3 py-2 rounded-lg bg-teal-600 text-white disabled:opacity-60">
+          {uploadingBill ? 'Uploading...' : 'Upload Bill'}
+        </button>
+
+        <div className="space-y-2 max-h-56 overflow-auto">
+          {inventoryBills.length === 0 ? (
+            <p className="text-sm text-slate-500">No uploaded bills yet.</p>
+          ) : (
+            inventoryBills.map((bill) => (
+              <div key={bill.id} className="border rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                <div>
+                  <p className="font-medium text-sm">Bill #{bill.id} • {bill.agency_name || 'Unknown agency'}</p>
+                  <p className="text-xs text-slate-500">Invoice: {bill.invoice_number || 'NA'} • Date: {bill.invoice_date || 'NA'}</p>
+                  <p className="text-xs text-slate-500">Status: {bill.status} • OCR: {bill.ocr_status}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => addQuickBillItem(bill.id)} className="px-2 py-1 text-xs border rounded">Add Starter Item</button>
+                  <button type="button" onClick={() => importBill(bill.id)} className="px-2 py-1 text-xs border rounded text-green-700">Import</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border p-4 overflow-auto">
