@@ -1,4 +1,4 @@
-package com.healthplus.controller;
+package com.healthplus.service;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
