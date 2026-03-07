@@ -9,6 +9,7 @@ import AppHeader from './components/AppHeader';
 import ProductGrid from './components/ProductGrid';
 import OrdersModal from './components/OrdersModal';
 import CartModal from './components/CartModal';
+import CheckoutPage from './components/CheckoutPage';
 import ProfileModal from './components/ProfileModal';
 import MyHealthModal from './components/MyHealthModal';
 import AdminPanel from './components/AdminPanel';
@@ -85,6 +86,17 @@ interface PurchasedMedicine {
   purchase_count: number;
 }
 
+interface DeliveryAddress {
+  fullName: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  pincode: string;
+  landmark: string;
+}
+
 export default function App() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [totalMedicines, setTotalMedicines] = useState(0);
@@ -123,7 +135,17 @@ export default function App() {
   const [purchasedMedicines, setPurchasedMedicines] = useState<PurchasedMedicine[]>([]);
   const [routineError, setRoutineError] = useState<string | null>(null);
   const [isSavingRoutine, setIsSavingRoutine] = useState(false);
-  const [activeView, setActiveView] = useState<'store' | 'admin'>('store');
+  const [activeView, setActiveView] = useState<'store' | 'admin' | 'checkout'>('store');
+  const [deliveryAddress, setDeliveryAddress] = useState<DeliveryAddress>({
+    fullName: '',
+    phone: '',
+    line1: '',
+    line2: '',
+    city: '',
+    state: '',
+    pincode: '',
+    landmark: '',
+  });
 
   const cartStorageKey = useMemo(() => (user ? `cart_${user.id}` : 'cart_guest'), [user]);
 
@@ -166,7 +188,15 @@ export default function App() {
 
   useEffect(() => {
     const syncView = () => {
-      setActiveView(window.location.hash === '#/admin' ? 'admin' : 'store');
+      if (window.location.hash === '#/admin') {
+        setActiveView('admin');
+        return;
+      }
+      if (window.location.hash === '#/checkout') {
+        setActiveView('checkout');
+        return;
+      }
+      setActiveView('store');
     };
     syncView();
     window.addEventListener('hashchange', syncView);
@@ -370,6 +400,10 @@ export default function App() {
       setOrderError('Your cart is empty. Add medicines to continue.');
       return;
     }
+    if (!isDeliveryAddressComplete()) {
+      setOrderError('Please complete your delivery address before placing the order.');
+      return;
+    }
 
     const isRegistered = paymentMethods.some((method) => method.provider === paymentMethod);
     if (!isRegistered) {
@@ -433,6 +467,7 @@ export default function App() {
         setShowCart(false);
         setPaymentIntentId(null);
         setOrderError(null);
+        window.location.hash = '/';
         alert(`Order placed successfully via ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'}!`);
       })
       .catch((error: Error) => {
@@ -468,10 +503,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (showCart) {
+    if (activeView === 'checkout') {
       loadPaymentMethods();
     }
-  }, [showCart, user]);
+  }, [activeView, user]);
 
   useEffect(() => {
     if (activeView === 'admin' && user?.role !== 'ROLE_ADMIN') {
@@ -594,6 +629,32 @@ export default function App() {
       .finally(() => setIsSavingRoutine(false));
   };
 
+  const isDeliveryAddressComplete = () => {
+    return Boolean(
+      deliveryAddress.fullName.trim() &&
+      deliveryAddress.phone.trim() &&
+      deliveryAddress.line1.trim() &&
+      deliveryAddress.city.trim() &&
+      deliveryAddress.state.trim() &&
+      deliveryAddress.pincode.trim()
+    );
+  };
+
+  const openCheckout = () => {
+    if (cart.length === 0) {
+      setOrderError('Your cart is empty. Add medicines to continue.');
+      return;
+    }
+    setShowCart(false);
+    setOrderError(null);
+    window.location.hash = '/checkout';
+  };
+
+  const openCartFromCheckout = () => {
+    setShowCart(true);
+    window.location.hash = '/';
+  };
+
   const openAdmin = () => {
     if (user?.role === 'ROLE_ADMIN') {
       window.location.hash = '/admin';
@@ -638,7 +699,7 @@ export default function App() {
       />
 
 
-      {activeView === 'admin' ? (
+      {activeView === 'admin' && (
         <>
           <section className="max-w-7xl mx-auto px-4 pt-2 pb-4">
             <div className="bg-white border border-[#dfeafb] rounded-3xl p-4 md:p-5 shadow-sm flex items-center justify-between gap-3">
@@ -651,34 +712,59 @@ export default function App() {
           </section>
           <AdminPanel show={true} />
         </>
-      ) : (
-      <>
-      <section className="max-w-7xl mx-auto px-4 pt-2 pb-4">
-        <div className="bg-white border border-[#dfeafb] rounded-3xl p-4 md:p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-slate-500">Healthcare companion</p>
-            <h2 className="text-xl md:text-2xl font-semibold text-slate-800">Your daily care, beautifully organized.</h2>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-3 py-1.5 rounded-full bg-[#edf4ff] text-[#2d7ff9]">Smart search</span>
-            <span className="px-3 py-1.5 rounded-full bg-[#edf4ff] text-[#2d7ff9]">Quick refill</span>
-            <span className="px-3 py-1.5 rounded-full bg-[#edf4ff] text-[#2d7ff9]">Order tracking</span>
-          </div>
-        </div>
-      </section>
+      )}
 
-      <ProductGrid
-        medicines={filteredMedicines}
-        isLoading={isLoading}
-        currentPage={currentPage}
-        totalMedicines={totalMedicines}
-        limit={limit}
-        onPreviousPage={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-        onNextPage={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalMedicines / limit)))}
-        onAddToCart={addToCart}
-        addingToCart={addingToCart}
-        onViewDetails={openMedicineDetails}
-      />
+      {activeView === 'store' && (
+        <>
+          <section className="max-w-7xl mx-auto px-4 pt-2 pb-4">
+            <div className="bg-white border border-[#dfeafb] rounded-3xl p-4 md:p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-slate-500">Healthcare companion</p>
+                <h2 className="text-xl md:text-2xl font-semibold text-slate-800">Your daily care, beautifully organized.</h2>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-3 py-1.5 rounded-full bg-[#edf4ff] text-[#2d7ff9]">Smart search</span>
+                <span className="px-3 py-1.5 rounded-full bg-[#edf4ff] text-[#2d7ff9]">Quick refill</span>
+                <span className="px-3 py-1.5 rounded-full bg-[#edf4ff] text-[#2d7ff9]">Order tracking</span>
+              </div>
+            </div>
+          </section>
+
+          <ProductGrid
+            medicines={filteredMedicines}
+            isLoading={isLoading}
+            currentPage={currentPage}
+            totalMedicines={totalMedicines}
+            limit={limit}
+            onPreviousPage={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            onNextPage={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(totalMedicines / limit)))}
+            onAddToCart={addToCart}
+            addingToCart={addingToCart}
+            onViewDetails={openMedicineDetails}
+          />
+        </>
+      )}
+
+      {activeView === 'checkout' && (
+        <CheckoutPage
+          cart={cart}
+          totalPrice={totalPrice}
+          paymentMethod={paymentMethod}
+          isPlacingOrder={isPlacingOrder}
+          orderError={orderError}
+          isPaymentMethodRegistered={paymentMethods.some((method) => method.provider === paymentMethod)}
+          isLoadingPaymentMethods={isLoadingPaymentMethods}
+          isRegisteringPaymentMethod={isRegisteringPaymentMethod}
+          paymentRegistrationError={paymentRegistrationError}
+          address={deliveryAddress}
+          onAddressChange={(field, value) => setDeliveryAddress((prev) => ({ ...prev, [field]: value }))}
+          onBackToCart={openCartFromCheckout}
+          onBackToStore={openStore}
+          onPaymentMethodChange={setPaymentMethod}
+          onRegisterPaymentMethod={registerPaymentMethod}
+          onPlaceOrder={placeOrder}
+        />
+      )}
 
       <OrdersModal
         show={showOrders}
@@ -735,13 +821,6 @@ export default function App() {
         show={showCart}
         cart={cart}
         totalPrice={totalPrice}
-        paymentMethod={paymentMethod}
-        isPlacingOrder={isPlacingOrder}
-        orderError={orderError}
-        isPaymentMethodRegistered={paymentMethods.some((method) => method.provider === paymentMethod)}
-        isLoadingPaymentMethods={isLoadingPaymentMethods}
-        isRegisteringPaymentMethod={isRegisteringPaymentMethod}
-        paymentRegistrationError={paymentRegistrationError}
         onClose={() => {
           setShowCart(false);
           setOrderError(null);
@@ -750,9 +829,7 @@ export default function App() {
         }}
         onUpdateQuantity={updateQuantity}
         onRemoveFromCart={removeFromCart}
-        onPaymentMethodChange={setPaymentMethod}
-        onRegisterPaymentMethod={registerPaymentMethod}
-        onPlaceOrder={placeOrder}
+        onProceedToCheckout={openCheckout}
       />
 
 
@@ -775,8 +852,6 @@ export default function App() {
       />
 
       <ProfileModal show={showProfile} user={user} onClose={() => setShowProfile(false)} onSave={updateProfile} />
-      </>
-      )}
     </div>
   );
 }

@@ -26,8 +26,6 @@ interface AppHeaderProps {
 }
 
 
-const tabs = ['Medicines', 'Lab Tests', 'Consult Doctor', 'Health Products'];
-
 export default function AppHeader({
   searchTerm,
   onSearchChange,
@@ -195,23 +193,6 @@ export default function AppHeader({
             )}
           </div>
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => onTabChange(tab)}
-            className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition-colors ${
-              activeTab === tab
-                ? 'bg-[#e7f2ff] border-[#9cc4ff] text-[#2365d1]'
-                : 'bg-white border-[#e4edf8] text-slate-600 hover:text-[#2365d1]'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
       </div>
     </header>
   );
