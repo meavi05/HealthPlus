@@ -26,8 +26,6 @@ interface AppHeaderProps {
 }
 
 
-const tabs = ['Medicines', 'Lab Tests', 'Consult Doctor', 'Health Products'];
-
 export default function AppHeader({
   searchTerm,
   onSearchChange,
@@ -48,6 +46,9 @@ export default function AppHeader({
 }: AppHeaderProps) {
   const [myHealthOpen, setMyHealthOpen] = useState(false);
   const myHealthMenuRef = useRef<HTMLDivElement | null>(null);
+  const isLoggedIn = Boolean(user);
+  const isAdmin = user?.role === 'ROLE_ADMIN';
+  const canAccessUserTools = isLoggedIn && !isAdmin;
 
   const handleProfileIconClick = () => {
     if (user) {
@@ -121,42 +122,46 @@ export default function AppHeader({
           )}
         </div>
         <div className="order-2 md:order-3 flex items-center gap-2 sm:gap-3 ml-auto">
-          <div className="relative" ref={myHealthMenuRef}>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-slate-600 hover:text-[#2d7ff9] text-sm"
-              onClick={() => setMyHealthOpen((prev) => !prev)}
-            >
-              <span className="hidden sm:inline">My Health</span>
-              <span className="sm:hidden">Health</span>
-              <ChevronDown size={16} className={`transition-transform ${myHealthOpen ? 'rotate-180' : ''}`} />
-            </button>
+          {canAccessUserTools && (
+            <div className="relative" ref={myHealthMenuRef}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-slate-600 hover:text-[#2d7ff9] text-sm"
+                onClick={() => setMyHealthOpen((prev) => !prev)}
+              >
+                <span className="hidden sm:inline">My Health</span>
+                <span className="sm:hidden">Health</span>
+                <ChevronDown size={16} className={`transition-transform ${myHealthOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            {myHealthOpen && (
-              <div className="absolute right-0 mt-2 w-48 sm:w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1">
-                <button
-                  type="button"
-                  onClick={() => chooseMyHealthOption('prescription')}
-                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
-                >
-                  Prescription
-                </button>
-                <button
-                  type="button"
-                  onClick={() => chooseMyHealthOption('routine')}
-                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
-                >
-                  Medicine Routine
-                </button>
-              </div>
-            )}
-          </div>
+              {myHealthOpen && (
+                <div className="absolute right-0 mt-2 w-48 sm:w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1">
+                  <button
+                    type="button"
+                    onClick={() => chooseMyHealthOption('prescription')}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
+                  >
+                    Prescription
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => chooseMyHealthOption('routine')}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f4f9ff]"
+                  >
+                    Medicine Routine
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {user ? (
             <>
-              {user?.role === 'ROLE_ADMIN' && (
+              {isAdmin && (
                 <button onClick={onOpenAdmin} className="text-slate-600 hover:text-[#2d7ff9] text-sm">Admin</button>
               )}
-              <button onClick={onFetchOrders} className="text-slate-600 hover:text-[#2d7ff9] hidden sm:inline">Track Order</button>
+              {canAccessUserTools && (
+                <button onClick={onFetchOrders} className="text-slate-600 hover:text-[#2d7ff9] hidden sm:inline">Track Order</button>
+              )}
               <a href="/api/auth/logout" className="text-slate-600 hover:text-[#2d7ff9] text-sm">Logout</a>
             </>
           ) : (
@@ -188,23 +193,6 @@ export default function AppHeader({
             )}
           </div>
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 pb-3 flex items-center gap-2 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => onTabChange(tab)}
-            className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition-colors ${
-              activeTab === tab
-                ? 'bg-[#e7f2ff] border-[#9cc4ff] text-[#2365d1]'
-                : 'bg-white border-[#e4edf8] text-slate-600 hover:text-[#2365d1]'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
       </div>
     </header>
   );

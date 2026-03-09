@@ -39,6 +39,7 @@ public class OrdersController {
                     current.id(),
                     request.paymentMethod(),
                     request.paymentIntentId(),
+                    request.deliveryAddressId(),
                     request.items(),
                     request.totalPrice()
             );

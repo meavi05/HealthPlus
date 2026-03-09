@@ -1,5 +1,6 @@
 package com.healthplus.controller;
 
+import com.healthplus.dto.CreateDeliveryAddressRequest;
 import com.healthplus.dto.UserUpdateRequest;
 import com.healthplus.security.LocalUser;
 import com.healthplus.security.LocalUserService;
@@ -38,6 +39,41 @@ public class UsersController {
         return ResponseEntity.ok(userService.getPaymentMethods(current.id()));
     }
 
+    @GetMapping("/me/delivery-addresses")
+    public ResponseEntity<?> getDeliveryAddresses(Authentication authentication) {
+        LocalUser current = localUserService.resolveOrCreate(authentication);
+        return ResponseEntity.ok(userService.getDeliveryAddresses(current.id()));
+    }
+
+    @PostMapping("/me/delivery-addresses")
+    public ResponseEntity<?> createDeliveryAddress(Authentication authentication, @RequestBody CreateDeliveryAddressRequest request) {
+        LocalUser current = localUserService.resolveOrCreate(authentication);
+
+        if (isBlank(request.fullName()) ||
+                isBlank(request.phone()) ||
+                isBlank(request.line1()) ||
+                isBlank(request.city()) ||
+                isBlank(request.state()) ||
+                isBlank(request.pincode())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Name, phone, line1, city, state and pincode are required"));
+        }
+
+        Long id = userService.createDeliveryAddress(
+                current.id(),
+                request.fullName().trim(),
+                request.phone().trim(),
+                request.line1().trim(),
+                request.line2() == null ? null : request.line2().trim(),
+                request.city().trim(),
+                request.state().trim(),
+                request.pincode().trim(),
+                request.landmark() == null ? null : request.landmark().trim(),
+                Boolean.TRUE.equals(request.isDefault())
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id, "message", "Delivery address added"));
+    }
+
     @PostMapping("/me/payment-methods")
     public ResponseEntity<?> registerPaymentMethod(Authentication authentication, @RequestBody Map<String, String> request) {
         LocalUser current = localUserService.resolveOrCreate(authentication);
@@ -66,5 +102,9 @@ public class UsersController {
 
         userService.updateUser(current.id(), request);
         return ResponseEntity.ok(Map.of("message", "Profile updated successfully"));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

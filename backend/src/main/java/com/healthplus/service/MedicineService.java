@@ -21,10 +21,10 @@ public class MedicineService {
         int offset = (page - 1) * limit;
         List<Medicine> medicines = jdbcTemplate.query(
                 """
-                SELECT id, name, description, price, stock,
+                SELECT id, name, description, ROUND(price, 2) AS price, stock,
                        COALESCE(category, 'General') AS category,
                        COALESCE(brand, 'HealthPlus') AS brand,
-                       COALESCE(mrp, price) AS mrp,
+                       ROUND(COALESCE(mrp, price), 2) AS mrp,
                        COALESCE(discount_percent, 0) AS discount_percent,
                        COALESCE(requires_prescription, 0) AS requires_prescription,
                        COALESCE(rating, 4.0) AS rating,
@@ -79,10 +79,10 @@ public class MedicineService {
     public Optional<Medicine> getMedicineById(Long id) {
         List<Medicine> medicines = jdbcTemplate.query(
                 """
-                SELECT id, name, description, price, stock,
+                SELECT id, name, description, ROUND(price, 2) AS price, stock,
                        COALESCE(category, 'General') AS category,
                        COALESCE(brand, 'HealthPlus') AS brand,
-                       COALESCE(mrp, price) AS mrp,
+                       ROUND(COALESCE(mrp, price), 2) AS mrp,
                        COALESCE(discount_percent, 0) AS discount_percent,
                        COALESCE(requires_prescription, 0) AS requires_prescription,
                        COALESCE(rating, 4.0) AS rating,
@@ -114,7 +114,7 @@ public class MedicineService {
     public List<Map<String, Object>> getSubstitutes(Long id) {
         return jdbcTemplate.queryForList(
                 """
-                SELECT m2.id, m2.name, m2.price
+                SELECT m2.id, m2.name, ROUND(m2.price, 2) as price
                 FROM medicines m1
                 JOIN medicines m2 ON COALESCE(m1.category, 'General') = COALESCE(m2.category, 'General')
                 WHERE m1.id = ? AND m2.id != m1.id

@@ -76,10 +76,10 @@ export default function ProductGrid({
                 <p className="text-xs text-[#2d7ff9] mt-2">Delivery: {medicine.delivery_eta || 'Tomorrow'}</p>
                 <div className="flex items-center justify-between mt-4">
                   <div>
-                    <p className="text-lg font-bold text-slate-800">₹{medicine.price}</p>
+                    <p className="text-lg font-bold text-slate-800">₹{medicine.price.toFixed(2)}</p>
                     {medicine.mrp && medicine.mrp > medicine.price && (
                       <p className="text-xs text-slate-500">
-                        <span className="line-through mr-1">₹{medicine.mrp}</span>
+                        <span className="line-through mr-1">₹{medicine.mrp.toFixed(2)}</span>
                         <span className="text-green-700">{medicine.discount_percent || 0}% off</span>
                       </p>
                     )}

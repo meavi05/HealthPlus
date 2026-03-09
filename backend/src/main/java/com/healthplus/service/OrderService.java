@@ -21,10 +21,12 @@ import java.util.List;
 public class OrderService {
     private final JdbcTemplate jdbcTemplate;
     private final PaymentGateway paymentGateway;
+    private final UserService userService;
 
-    public OrderService(JdbcTemplate jdbcTemplate, PaymentGateway paymentGateway) {
+    public OrderService(JdbcTemplate jdbcTemplate, PaymentGateway paymentGateway, UserService userService) {
         this.jdbcTemplate = jdbcTemplate;
         this.paymentGateway = paymentGateway;
+        this.userService = userService;
     }
 
     public List<OrderView> getOrdersByUserId(Long userId) {
@@ -71,6 +73,12 @@ public class OrderService {
         if (request.paymentIntentId() == null) {
             throw new IllegalArgumentException("Authorized payment intent is required");
         }
+        if (request.deliveryAddressId() == null) {
+            throw new IllegalArgumentException("Delivery address is required");
+        }
+        if (!userService.userOwnsDeliveryAddress(request.userId(), request.deliveryAddressId())) {
+            throw new IllegalArgumentException("Invalid delivery address");
+        }
 
         Integer paymentMethodCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM user_payment_methods WHERE user_id = ? AND provider = ? AND status = 'active' AND is_verified = 1",
@@ -110,15 +118,16 @@ public class OrderService {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO orders (user_id, total_price, payment_method, payment_status, payment_intent_id, transaction_ref) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO orders (user_id, total_price, payment_method, payment_status, payment_intent_id, transaction_ref, delivery_address_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     Statement.RETURN_GENERATED_KEYS
             );
             ps.setLong(1, request.userId());
-            ps.setDouble(2, request.totalPrice());
+            ps.setDouble(2, roundCurrency(request.totalPrice()));
             ps.setString(3, request.paymentMethod().toLowerCase());
             ps.setString(4, "authorized");
             ps.setLong(5, request.paymentIntentId());
             ps.setString(6, intent.transactionRef());
+            ps.setLong(7, request.deliveryAddressId());
             return ps;
         }, keyHolder);
 
@@ -133,7 +142,7 @@ public class OrderService {
                     orderId,
                     item.medicineId(),
                     item.quantity(),
-                    item.price()
+                    roundCurrency(item.price())
             );
         }
         return orderId;
@@ -201,4 +210,11 @@ public class OrderService {
     private record OrderRow(Long id, Long userId, String status) {}
 
     private record RefundRow(Long id, Long userId, Double totalPrice, String paymentMethod, String transactionRef, String paymentStatus) {}
+
+    private static double roundCurrency(Double value) {
+        if (value == null) {
+            return 0;
+        }
+        return Math.round(value * 100.0) / 100.0;
+    }
 }
