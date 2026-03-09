@@ -1,5 +1,5 @@
-import { ArrowLeft, CreditCard, MapPin, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, CreditCard, MapPin, PlusCircle, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface Medicine {
   id: number;
@@ -14,6 +14,7 @@ interface CartItem extends Medicine {
 }
 
 interface DeliveryAddress {
+  id?: number;
   fullName: string;
   phone: string;
   line1: string;
@@ -22,6 +23,7 @@ interface DeliveryAddress {
   state: string;
   pincode: string;
   landmark: string;
+  isDefault?: boolean;
 }
 
 interface CheckoutPageProps {
@@ -35,7 +37,14 @@ interface CheckoutPageProps {
   isRegisteringPaymentMethod: boolean;
   paymentRegistrationError: string | null;
   address: DeliveryAddress;
+  deliveryAddresses: DeliveryAddress[];
+  selectedDeliveryAddressId: number | null;
+  isLoadingDeliveryAddresses: boolean;
+  isSavingDeliveryAddress: boolean;
+  deliveryAddressError: string | null;
   onAddressChange: (field: keyof DeliveryAddress, value: string) => void;
+  onSelectDeliveryAddress: (addressId: number) => void;
+  onAddDeliveryAddress: () => void;
   onBackToCart: () => void;
   onBackToStore: () => void;
   onPaymentMethodChange: (method: 'gpay' | 'phonepe') => void;
@@ -54,16 +63,30 @@ export default function CheckoutPage({
   isRegisteringPaymentMethod,
   paymentRegistrationError,
   address,
+  deliveryAddresses,
+  selectedDeliveryAddressId,
+  isLoadingDeliveryAddresses,
+  isSavingDeliveryAddress,
+  deliveryAddressError,
   onAddressChange,
+  onSelectDeliveryAddress,
+  onAddDeliveryAddress,
   onBackToCart,
   onBackToStore,
   onPaymentMethodChange,
   onRegisterPaymentMethod,
   onPlaceOrder,
 }: CheckoutPageProps) {
+  const [showAddressForm, setShowAddressForm] = useState(false);
   const deliveryFee = totalPrice >= 499 ? 0 : 39;
   const handlingFee = totalPrice > 0 ? 9 : 0;
   const finalAmount = totalPrice + deliveryFee + handlingFee;
+
+  useEffect(() => {
+    if (deliveryAddresses.length === 0) {
+      setShowAddressForm(true);
+    }
+  }, [deliveryAddresses.length]);
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
@@ -90,15 +113,42 @@ export default function CheckoutPage({
               <MapPin size={18} className="text-[#2d7ff9]" />
               Delivery Address
             </h3>
-            <div className="grid sm:grid-cols-2 gap-3 mt-4">
-              <input value={address.fullName} onChange={(e) => onAddressChange('fullName', e.target.value)} placeholder="Full name" className="border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.phone} onChange={(e) => onAddressChange('phone', e.target.value)} placeholder="Phone number" className="border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.line1} onChange={(e) => onAddressChange('line1', e.target.value)} placeholder="Address line 1" className="sm:col-span-2 border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.line2} onChange={(e) => onAddressChange('line2', e.target.value)} placeholder="Address line 2" className="sm:col-span-2 border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.city} onChange={(e) => onAddressChange('city', e.target.value)} placeholder="City" className="border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.state} onChange={(e) => onAddressChange('state', e.target.value)} placeholder="State" className="border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.pincode} onChange={(e) => onAddressChange('pincode', e.target.value)} placeholder="PIN code" className="border border-[#d8e6fa] rounded-xl px-3 py-2" />
-              <input value={address.landmark} onChange={(e) => onAddressChange('landmark', e.target.value)} placeholder="Landmark (optional)" className="border border-[#d8e6fa] rounded-xl px-3 py-2" />
+
+            {isLoadingDeliveryAddresses ? (
+              <p className="text-sm text-slate-500 mt-3">Loading saved addresses...</p>
+            ) : deliveryAddresses.length > 0 ? (
+              <div className="grid sm:grid-cols-2 gap-3 mt-4">
+                {deliveryAddresses.map((savedAddress) => (
+                  <button
+                    key={savedAddress.id}
+                    type="button"
+                    onClick={() => savedAddress.id && onSelectDeliveryAddress(savedAddress.id)}
+                    className={`text-left border rounded-xl p-3 transition-colors ${selectedDeliveryAddressId === savedAddress.id ? 'border-[#2d7ff9] bg-[#edf4ff]' : 'border-[#d8e6fa] bg-white hover:border-[#b9d1f4]'}`}
+                  >
+                    <p className="text-sm font-semibold text-slate-800">{savedAddress.fullName}</p>
+                    <p className="text-xs text-slate-500 mt-1">{savedAddress.phone}</p>
+                    <p className="text-xs text-slate-600 mt-2">
+                      {savedAddress.line1}, {savedAddress.line2 ? `${savedAddress.line2}, ` : ''}
+                      {savedAddress.city}, {savedAddress.state} - {savedAddress.pincode}
+                    </p>
+                    {savedAddress.isDefault && <p className="text-[11px] text-teal-700 mt-2">Default</p>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 mt-3">No saved addresses yet. Add your first delivery address below.</p>
+            )}
+
+            <div className="border-t border-dashed border-[#d8e6fa] mt-4 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAddressForm(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#b9d1f4] bg-[#eff5ff] text-[#1d5fc7] px-4 py-2 text-sm font-medium hover:bg-[#e5f0ff] transition-colors"
+              >
+                <PlusCircle size={16} />
+                Add New Address
+              </button>
+              {deliveryAddressError && !showAddressForm && <p className="text-sm text-red-600 mt-2">{deliveryAddressError}</p>}
             </div>
           </div>
 
@@ -177,7 +227,7 @@ export default function CheckoutPage({
           <button
             type="button"
             onClick={onPlaceOrder}
-            disabled={isPlacingOrder || !isPaymentMethodRegistered}
+            disabled={isPlacingOrder || !isPaymentMethodRegistered || !selectedDeliveryAddressId}
             className="mt-4 w-full bg-[#2d7ff9] text-white py-2.5 rounded-xl disabled:opacity-60"
           >
             {isPlacingOrder ? 'Placing Order...' : `Pay with ${paymentMethod === 'gpay' ? 'GPay' : 'PhonePe'} • ₹${finalAmount.toFixed(2)}`}
@@ -188,6 +238,50 @@ export default function CheckoutPage({
           </p>
         </aside>
       </div>
+
+      {showAddressForm && (
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 flex items-center justify-center">
+          <div className="w-full max-w-2xl rounded-3xl bg-white border border-[#dce8fa] shadow-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#e6eef9] bg-gradient-to-r from-[#f7fbff] to-white">
+              <h4 className="text-lg font-semibold text-slate-800">Add Delivery Address</h4>
+              <p className="text-sm text-slate-500 mt-1">Use a complete address for faster and accurate delivery.</p>
+            </div>
+
+            <div className="p-5 grid sm:grid-cols-2 gap-3">
+              <input value={address.fullName} onChange={(e) => onAddressChange('fullName', e.target.value)} placeholder="Full name" className="border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.phone} onChange={(e) => onAddressChange('phone', e.target.value)} placeholder="Phone number" className="border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.line1} onChange={(e) => onAddressChange('line1', e.target.value)} placeholder="Address line 1" className="sm:col-span-2 border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.line2} onChange={(e) => onAddressChange('line2', e.target.value)} placeholder="Address line 2" className="sm:col-span-2 border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.city} onChange={(e) => onAddressChange('city', e.target.value)} placeholder="City" className="border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.state} onChange={(e) => onAddressChange('state', e.target.value)} placeholder="State" className="border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.pincode} onChange={(e) => onAddressChange('pincode', e.target.value)} placeholder="PIN code" className="border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+              <input value={address.landmark} onChange={(e) => onAddressChange('landmark', e.target.value)} placeholder="Landmark (optional)" className="border border-[#d8e6fa] rounded-xl px-3 py-2.5" />
+            </div>
+
+            <div className="px-5 pb-5">
+              {deliveryAddressError && <p className="text-sm text-red-600 mb-3">{deliveryAddressError}</p>}
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddressForm(false)}
+                  className="px-4 py-2.5 rounded-xl border border-[#d8e6fa] text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={onAddDeliveryAddress}
+                  disabled={isSavingDeliveryAddress}
+                  className="inline-flex items-center justify-center gap-2 bg-[#2d7ff9] text-white px-4 py-2.5 rounded-xl disabled:opacity-60"
+                >
+                  <PlusCircle size={16} />
+                  {isSavingDeliveryAddress ? 'Saving address...' : 'Save this address'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

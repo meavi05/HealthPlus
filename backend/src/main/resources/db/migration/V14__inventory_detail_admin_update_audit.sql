@@ -1,0 +1,5 @@
+ALTER TABLE medicine_inventory_details ADD COLUMN admin_updated_by_user_id INTEGER;
+ALTER TABLE medicine_inventory_details ADD COLUMN admin_updated_at DATETIME;
+
+CREATE INDEX IF NOT EXISTS idx_mid_admin_updated_by_user_id
+ON medicine_inventory_details(admin_updated_by_user_id);

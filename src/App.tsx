@@ -87,6 +87,7 @@ interface PurchasedMedicine {
 }
 
 interface DeliveryAddress {
+  id?: number;
   fullName: string;
   phone: string;
   line1: string;
@@ -95,6 +96,7 @@ interface DeliveryAddress {
   state: string;
   pincode: string;
   landmark: string;
+  isDefault?: boolean;
 }
 
 export default function App() {
@@ -146,6 +148,12 @@ export default function App() {
     pincode: '',
     landmark: '',
   });
+  const [deliveryAddresses, setDeliveryAddresses] = useState<DeliveryAddress[]>([]);
+  const [selectedDeliveryAddressId, setSelectedDeliveryAddressId] = useState<number | null>(null);
+  const [isLoadingDeliveryAddresses, setIsLoadingDeliveryAddresses] = useState(false);
+  const [isSavingDeliveryAddress, setIsSavingDeliveryAddress] = useState(false);
+  const [deliveryAddressError, setDeliveryAddressError] = useState<string | null>(null);
+  const round2 = (value: number) => Math.round(value * 100) / 100;
 
   const cartStorageKey = useMemo(() => (user ? `cart_${user.id}` : 'cart_guest'), [user]);
 
@@ -160,7 +168,14 @@ export default function App() {
     fetch(`/api/medicines?page=${currentPage}&limit=${limit}`)
       .then((res) => res.json())
       .then((data) => {
-        setMedicines(data.medicines);
+        const normalizedMedicines: Medicine[] = Array.isArray(data.medicines)
+          ? data.medicines.map((medicine: any) => ({
+              ...medicine,
+              price: round2(Number(medicine.price ?? 0)),
+              mrp: medicine.mrp != null ? round2(Number(medicine.mrp)) : undefined,
+            }))
+          : [];
+        setMedicines(normalizedMedicines);
         setTotalMedicines(data.total);
         setIsLoading(false);
       });
@@ -238,7 +253,7 @@ export default function App() {
                     id: Number(item.id),
                     medicineName: item.medicineName ?? item.medicine_name ?? 'Medicine',
                     quantity: Number(item.quantity ?? 0),
-                    price: Number(item.price ?? 0),
+                    price: round2(Number(item.price ?? 0)),
                   }))
                 : [],
             }))
@@ -339,7 +354,7 @@ export default function App() {
     setCart((prevCart) => prevCart.filter((item) => item.id !== id));
   };
 
-  const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalPrice = round2(cart.reduce((sum, item) => sum + item.price * item.quantity, 0));
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
 
@@ -355,6 +370,110 @@ export default function App() {
       .then((data) => setPaymentMethods(Array.isArray(data) ? data : []))
       .catch(() => setPaymentMethods([]))
       .finally(() => setIsLoadingPaymentMethods(false));
+  };
+
+  const normalizeAddress = (address: any): DeliveryAddress => ({
+    id: Number(address.id),
+    fullName: address.fullName ?? address.full_name ?? '',
+    phone: address.phone ?? '',
+    line1: address.line1 ?? address.line_1 ?? '',
+    line2: address.line2 ?? address.line_2 ?? '',
+    city: address.city ?? '',
+    state: address.state ?? '',
+    pincode: address.pincode ?? '',
+    landmark: address.landmark ?? '',
+    isDefault: Boolean(address.isDefault ?? address.is_default),
+  });
+
+  const loadDeliveryAddresses = (preferredAddressId?: number) => {
+    if (!user || typeof user.id !== 'number') {
+      setDeliveryAddresses([]);
+      setSelectedDeliveryAddressId(null);
+      return;
+    }
+
+    setIsLoadingDeliveryAddresses(true);
+    setDeliveryAddressError(null);
+
+    fetch('/api/users/me/delivery-addresses')
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to load delivery addresses');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const addresses: DeliveryAddress[] = Array.isArray(data) ? data.map(normalizeAddress) : [];
+        setDeliveryAddresses(addresses);
+        if (addresses.length === 0) {
+          setSelectedDeliveryAddressId(null);
+          return;
+        }
+        const preferredAddress = preferredAddressId
+          ? addresses.find((address) => address.id === preferredAddressId)
+          : null;
+        const defaultAddress = addresses.find((address) => address.isDefault);
+        const initialAddress = preferredAddress || defaultAddress || addresses[0];
+        if (initialAddress?.id) {
+          setSelectedDeliveryAddressId(initialAddress.id);
+          setDeliveryAddress((prev) => ({ ...prev, ...initialAddress }));
+        }
+      })
+      .catch((error: Error) => setDeliveryAddressError(error.message || 'Unable to load delivery addresses'))
+      .finally(() => setIsLoadingDeliveryAddresses(false));
+  };
+
+  const addDeliveryAddress = () => {
+    if (!user || typeof user.id !== 'number') {
+      setDeliveryAddressError('Please log in to add delivery addresses.');
+      return;
+    }
+    if (!isDeliveryAddressComplete()) {
+      setDeliveryAddressError('Please fill all required address fields.');
+      return;
+    }
+
+    setIsSavingDeliveryAddress(true);
+    setDeliveryAddressError(null);
+
+    fetch('/api/users/me/delivery-addresses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: deliveryAddress.fullName,
+        phone: deliveryAddress.phone,
+        line1: deliveryAddress.line1,
+        line2: deliveryAddress.line2,
+        city: deliveryAddress.city,
+        state: deliveryAddress.state,
+        pincode: deliveryAddress.pincode,
+        landmark: deliveryAddress.landmark,
+        is_default: deliveryAddresses.length === 0,
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Unable to add delivery address');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const newId = Number(data.id);
+        return loadDeliveryAddresses(Number.isFinite(newId) ? newId : undefined);
+      })
+      .catch((error: Error) => setDeliveryAddressError(error.message || 'Unable to add delivery address'))
+      .finally(() => setIsSavingDeliveryAddress(false));
+  };
+
+  const selectDeliveryAddress = (addressId: number) => {
+    setSelectedDeliveryAddressId(addressId);
+    const selected = deliveryAddresses.find((address) => address.id === addressId);
+    if (selected) {
+      setDeliveryAddress((prev) => ({ ...prev, ...selected }));
+      setDeliveryAddressError(null);
+    }
   };
 
   const registerPaymentMethod = (provider: 'gpay' | 'phonepe', upiId: string) => {
@@ -400,8 +519,8 @@ export default function App() {
       setOrderError('Your cart is empty. Add medicines to continue.');
       return;
     }
-    if (!isDeliveryAddressComplete()) {
-      setOrderError('Please complete your delivery address before placing the order.');
+    if (!selectedDeliveryAddressId) {
+      setOrderError('Please select a delivery address or add a new one.');
       return;
     }
 
@@ -419,7 +538,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payment_method: paymentMethod,
-        amount: totalPrice,
+        amount: round2(totalPrice),
       }),
     })
       .then(async (intentRes) => {
@@ -450,8 +569,9 @@ export default function App() {
           body: JSON.stringify({
             payment_method: paymentMethod,
             payment_intent_id: intent.id,
-            items: cart.map((item) => ({ medicine_id: item.id, quantity: item.quantity, price: item.price })),
-            total_price: totalPrice,
+            delivery_address_id: selectedDeliveryAddressId,
+            items: cart.map((item) => ({ medicine_id: item.id, quantity: item.quantity, price: round2(item.price) })),
+            total_price: round2(totalPrice),
           }),
         });
       })
@@ -505,6 +625,7 @@ export default function App() {
   useEffect(() => {
     if (activeView === 'checkout') {
       loadPaymentMethods();
+      loadDeliveryAddresses();
     }
   }, [activeView, user]);
 
@@ -667,12 +788,43 @@ export default function App() {
     window.location.hash = '/';
   };
 
+  const adminDisplayName = (user?.name || user?.email || 'Admin').trim();
+
   const openMedicineDetails = (medicineId: number) => {
     fetch(`/api/medicines/${medicineId}`)
       .then((res) => res.json())
-      .then((data) => setSelectedMedicine(data))
+      .then((data) =>
+        setSelectedMedicine({
+          ...data,
+          price: round2(Number(data.price ?? 0)),
+          mrp: data.mrp != null ? round2(Number(data.mrp)) : undefined,
+        })
+      )
       .catch(() => setSelectedMedicine(medicines.find((m) => m.id === medicineId) || null));
   };
+
+  if (user?.role === 'ROLE_ADMIN') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#f3f8ff] via-white to-[#f7fbff]">
+        <section className="max-w-7xl mx-auto px-4 pt-4 pb-3">
+          <div className="bg-white border border-[#dfeafb] rounded-2xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Logged in as</p>
+              <p className="text-sm md:text-base font-semibold text-slate-800 truncate">{adminDisplayName}</p>
+              {user.email && <p className="text-xs text-slate-500 truncate">{user.email}</p>}
+            </div>
+            <a
+              href="/api/auth/logout"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-[#d7e4f7] bg-[#f8fbff] text-[#1e4ca0] font-medium hover:bg-[#edf4ff]"
+            >
+              Logout
+            </a>
+          </div>
+        </section>
+        <AdminPanel show={true} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#f3f8ff] via-white to-[#f7fbff]">
@@ -758,6 +910,13 @@ export default function App() {
           paymentRegistrationError={paymentRegistrationError}
           address={deliveryAddress}
           onAddressChange={(field, value) => setDeliveryAddress((prev) => ({ ...prev, [field]: value }))}
+          deliveryAddresses={deliveryAddresses}
+          selectedDeliveryAddressId={selectedDeliveryAddressId}
+          isLoadingDeliveryAddresses={isLoadingDeliveryAddresses}
+          isSavingDeliveryAddress={isSavingDeliveryAddress}
+          deliveryAddressError={deliveryAddressError}
+          onSelectDeliveryAddress={selectDeliveryAddress}
+          onAddDeliveryAddress={addDeliveryAddress}
           onBackToCart={openCartFromCheckout}
           onBackToStore={openStore}
           onPaymentMethodChange={setPaymentMethod}
@@ -805,8 +964,8 @@ export default function App() {
             <p className="text-sm text-gray-600 mt-1">{selectedMedicine.brand} • {selectedMedicine.category}</p>
             <p className="mt-4 text-gray-700">{selectedMedicine.description}</p>
             <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
-              <div>Price: <strong>₹{selectedMedicine.price}</strong></div>
-              <div>MRP: <strong>₹{selectedMedicine.mrp || selectedMedicine.price}</strong></div>
+              <div>Price: <strong>₹{selectedMedicine.price.toFixed(2)}</strong></div>
+              <div>MRP: <strong>₹{(selectedMedicine.mrp || selectedMedicine.price).toFixed(2)}</strong></div>
               <div>Rating: <strong>{selectedMedicine.rating || 4.0} / 5</strong></div>
               <div>Delivery: <strong>{selectedMedicine.delivery_eta || 'Tomorrow'}</strong></div>
             </div>
