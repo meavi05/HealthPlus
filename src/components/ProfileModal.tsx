@@ -5,6 +5,7 @@ interface ProfileUser {
   id: number | string;
   name: string;
   email?: string;
+  mobile_number?: string;
   profile_picture?: string;
 }
 
@@ -102,6 +103,11 @@ export default function ProfileModal({ show, user, onClose, onSave }: ProfileMod
               ) : (
                 <p className="mt-1 text-gray-700">{editUser.email || '-'}</p>
               )}
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500">Mobile</label>
+              <p className="mt-1 text-gray-700">{editUser.mobile_number || '-'}</p>
             </div>
 
             {isEditing && (

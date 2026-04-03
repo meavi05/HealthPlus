@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MedicineInventoryDetail, MedicineRow } from './types';
-import { formatCurrency, formatDate, toPercent } from './utils';
+import { formatCurrency, formatDate, formatPackSplitStock, toPercent } from './utils';
 
 interface MedicineDetailsModalProps {
   selectedMedicine: MedicineRow | null;
@@ -23,6 +23,7 @@ interface MedicineDetailsModalProps {
       expiry: string;
       mrp: number;
       rate: number;
+      gst: number;
       dis1: number;
       dis2: number;
       amount: number;
@@ -79,17 +80,32 @@ export default function MedicineDetailsModal({
     expiry: '',
     mrp: '',
     rate: '',
+    gst: '',
     dis1: '',
     dis2: '',
     amount: '',
     quantity_added: '',
     bonus: '',
+    deal: '',
     source: '',
   });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingDetailId, setSavingDetailId] = useState<number | null>(null);
   const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
   const [deletingMedicine, setDeletingMedicine] = useState(false);
+  const latestDetail = selectedMedicineDetails[0];
+  const latestMrp = latestDetail?.mrp ?? selectedMedicine?.mrp ?? 0;
+  const latestEffective =
+    latestDetail?.effective_rate ?? selectedMedicine?.price ?? latestDetail?.rate ?? 0;
+  const latestPack = latestDetail?.pack ?? selectedMedicine?.pack ?? '';
+  const hasDealBonusQty = (detail: MedicineInventoryDetail) => {
+    const dealText = String(detail.deal ?? '').trim();
+    const bonusText = String(detail.bonus ?? '').trim();
+    const qtyText = String(detail.qty_fr ?? '').trim();
+    const bonusNumeric = Number(bonusText.replace(/[^0-9.]/g, ''));
+    const hasBonus = bonusText.length > 0 && (Number.isFinite(bonusNumeric) ? bonusNumeric > 0 : /[A-Za-z+\/]/.test(bonusText));
+    return dealText.length > 0 || hasBonus || qtyText.includes('+') || qtyText.includes('/');
+  };
 
   useEffect(() => {
     if (!selectedMedicine) return;
@@ -142,6 +158,12 @@ export default function MedicineDetailsModal({
                 {selectedMedicine.brand || 'Unspecified'} • {selectedMedicine.category || 'General'}
               </p>
               <p className="text-sm text-slate-600 mt-3">{selectedMedicine.description || 'No description available.'}</p>
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <DetailChip label="MRP" value={formatCurrency(latestMrp)} />
+                <DetailChip label="Effective Price" value={formatCurrency(latestEffective)} />
+                <DetailChip label="Stock" value={formatPackSplitStock(selectedMedicine.stock, latestPack)} />
+                <DetailChip label="Discount" value={toPercent(selectedMedicine.discount_percent)} />
+              </div>
             </div>
           </div>
 
@@ -171,7 +193,7 @@ export default function MedicineDetailsModal({
               <p className="text-sm text-slate-500">No mapped inventory details found for this medicine yet.</p>
             ) : (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                   <DetailChip label="Entries" value={selectedMedicineDetails.length} />
                   <DetailChip
                     label="Total Qty Added"
@@ -183,21 +205,31 @@ export default function MedicineDetailsModal({
                   />
                   <DetailChip
                     label="Latest Effective Price"
-                    value={formatCurrency(selectedMedicineDetails[0]?.rate)}
+                    value={formatCurrency(selectedMedicineDetails[0]?.effective_rate ?? selectedMedicineDetails[0]?.rate)}
                   />
+                  <DetailChip label="Latest MRP" value={formatCurrency(latestMrp)} />
                 </div>
 
                 <div className="space-y-2">
                   {selectedMedicineDetails.map((detail, index) => {
                     const isEditing = editingDetailId === detail.id;
+                    const highlighted = hasDealBonusQty(detail);
                     return (
-                      <div key={detail.id} className="rounded-xl border bg-gradient-to-r from-[#f8fbff] to-white p-3">
+                      <div
+                        key={detail.id}
+                        className={`rounded-xl border p-3 ${
+                          highlighted ? 'border-amber-200 bg-amber-50' : 'bg-gradient-to-r from-[#f8fbff] to-white'
+                        }`}
+                      >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-slate-800">
                           Batch {detail.batch || '-'}
                           <span className="text-xs font-normal text-slate-500 ml-2">#{selectedMedicineDetails.length - index}</span>
                         </p>
                           <div className="flex items-center gap-1">
+                            {highlighted && (
+                              <span className="text-[10px] rounded bg-amber-100 text-amber-800 px-2 py-0.5">Deal/Bonus/QTY</span>
+                            )}
                             <button
                               type="button"
                               onClick={() => {
@@ -216,11 +248,13 @@ export default function MedicineDetailsModal({
                                   expiry: detail.expiry || '',
                                   mrp: String(detail.mrp ?? 0),
                                   rate: String(detail.rate ?? 0),
+                                  gst: String(detail.gst ?? 0),
                                   dis1: String(detail.dis1 ?? 0),
                                   dis2: String(detail.dis2 ?? 0),
                                   amount: String(detail.amount ?? 0),
                                   quantity_added: String(detail.quantity_added ?? 0),
                                   bonus: String(detail.bonus ?? 0),
+                                  deal: detail.deal || '',
                                   source: detail.source || 'ocr',
                                 });
                                 setSaveError(null);
@@ -283,6 +317,9 @@ export default function MedicineDetailsModal({
                               <label className="text-xs text-slate-700">Effective Price (Rate)
                                 <input value={editForm.rate} onChange={(e) => setEditForm((s) => ({ ...s, rate: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded-lg px-2.5 py-2 text-xs" />
                               </label>
+                              <label className="text-xs text-slate-700">GST (%)
+                                <input value={editForm.gst} onChange={(e) => setEditForm((s) => ({ ...s, gst: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded-lg px-2.5 py-2 text-xs" />
+                              </label>
                               <label className="text-xs text-slate-700">Discount 1 (%)
                                 <input value={editForm.dis1} onChange={(e) => setEditForm((s) => ({ ...s, dis1: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded-lg px-2.5 py-2 text-xs" />
                               </label>
@@ -297,6 +334,9 @@ export default function MedicineDetailsModal({
                               </label>
                               <label className="text-xs text-slate-700">Bonus
                                 <input value={editForm.bonus} onChange={(e) => setEditForm((s) => ({ ...s, bonus: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded-lg px-2.5 py-2 text-xs" />
+                              </label>
+                              <label className="text-xs text-slate-700">Deal
+                                <input value={editForm.deal} onChange={(e) => setEditForm((s) => ({ ...s, deal: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded-lg px-2.5 py-2 text-xs" />
                               </label>
                               <label className="text-xs text-slate-700">Source
                                 <input value={editForm.source} onChange={(e) => setEditForm((s) => ({ ...s, source: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded-lg px-2.5 py-2 text-xs" />
@@ -334,11 +374,13 @@ export default function MedicineDetailsModal({
                                     expiry: editForm.expiry.trim(),
                                     mrp: Number(editForm.mrp || 0),
                                     rate: Number(editForm.rate || 0),
+                                    gst: Number(editForm.gst || 0),
                                     dis1: Number(editForm.dis1 || 0),
                                     dis2: Number(editForm.dis2 || 0),
                                     amount: Number(editForm.amount || 0),
                                     quantity_added: Number(editForm.quantity_added || 0),
                                     bonus: Number(editForm.bonus || 0),
+                                    deal: editForm.deal.trim(),
                                     source: editForm.source.trim(),
                                   })
                                     .then(() => setEditingDetailId(null))
@@ -358,12 +400,15 @@ export default function MedicineDetailsModal({
                           <MiniStat label="Qty+F/R" value={detail.qty_fr || '-'} />
                           <MiniStat label="Qty Added" value={detail.quantity_added ?? '-'} />
                           <MiniStat label="Bonus" value={detail.bonus ?? 0} />
+                          <MiniStat label="Deal" value={detail.deal || '-'} />
                           <MiniStat label="Pack" value={detail.pack || '-'} />
                           <MiniStat label="Category" value={detail.medicine_category || selectedMedicine.category || '-'} />
                           <MiniStat label="Type" value={detail.medicine_type || '-'} />
                           <MiniStat label="HSN" value={detail.hsn || '-'} />
                           <MiniStat label="Mfr" value={detail.manufacturer || '-'} />
-                          <MiniStat label="Effective Price" value={formatCurrency(detail.rate)} />
+                          <MiniStat label="Rate" value={formatCurrency(detail.rate)} />
+                          <MiniStat label="GST" value={toPercent(detail.gst)} />
+                          <MiniStat label="Effective Price" value={formatCurrency(detail.effective_rate ?? detail.rate)} />
                           <MiniStat label="MRP" value={formatCurrency(detail.mrp)} />
                           <MiniStat label="Dis1" value={toPercent(detail.dis1)} />
                           <MiniStat label="Dis2" value={toPercent(detail.dis2)} />

@@ -23,6 +23,10 @@ public class LocalUserService {
             throw new IllegalArgumentException("Not authenticated");
         }
 
+        if (authentication.getPrincipal() instanceof LocalUser localUser) {
+            return localUser;
+        }
+
         if (authentication instanceof OAuth2AuthenticationToken oauthToken && oauthToken.getPrincipal() instanceof OAuth2User oauthUser) {
             Map<String, Object> attributes = oauthUser.getAttributes();
             Object providerUserId = attributes.getOrDefault("sub", attributes.getOrDefault("id", authentication.getName()));
@@ -35,6 +39,63 @@ public class LocalUserService {
         String name = authentication.getName();
         String email = normalizeEmail(authentication.getName(), authentication.getName());
         return ensureLocalUser(email, name, "");
+    }
+
+    public LocalUser resolveOrCreateByMobile(String mobileNumber, String preferredName) {
+        String normalizedMobile = normalizeMobile(mobileNumber);
+        if (normalizedMobile.isBlank()) {
+            throw new IllegalArgumentException("Valid mobile number is required");
+        }
+
+        List<LocalUser> existingByMobile = jdbcTemplate.query(
+                "SELECT id, email, name, profile_picture, role, mobile_number FROM users WHERE mobile_number = ? LIMIT 1",
+                (rs, rowNum) -> new LocalUser(
+                        rs.getLong("id"),
+                        rs.getString("email"),
+                        rs.getString("name"),
+                        rs.getString("profile_picture"),
+                        rs.getString("role"),
+                        rs.getString("mobile_number")
+                ),
+                normalizedMobile
+        );
+        if (!existingByMobile.isEmpty()) {
+            LocalUser current = existingByMobile.get(0);
+            String resolvedName = preferredName == null || preferredName.isBlank() ? current.name() : preferredName.trim();
+            jdbcTemplate.update(
+                    "UPDATE users SET name = ?, mobile_number = ? WHERE id = ?",
+                    resolvedName,
+                    normalizedMobile,
+                    current.id()
+            );
+            return new LocalUser(current.id(), current.email(), resolvedName, current.profilePicture(), current.role(), normalizedMobile);
+        }
+
+        String syntheticEmail = "mobile_" + normalizedMobile + "@otp.local";
+        String resolvedName = preferredName == null || preferredName.isBlank() ? "Mobile User" : preferredName.trim();
+        jdbcTemplate.update(
+                "INSERT INTO users (email, name, profile_picture, role, mobile_number) VALUES (?, ?, '', 'ROLE_USER', ?)",
+                syntheticEmail,
+                resolvedName,
+                normalizedMobile
+        );
+
+        List<LocalUser> inserted = jdbcTemplate.query(
+                "SELECT id, email, name, profile_picture, role, mobile_number FROM users WHERE mobile_number = ? LIMIT 1",
+                (rs, rowNum) -> new LocalUser(
+                        rs.getLong("id"),
+                        rs.getString("email"),
+                        rs.getString("name"),
+                        rs.getString("profile_picture"),
+                        rs.getString("role"),
+                        rs.getString("mobile_number")
+                ),
+                normalizedMobile
+        );
+        if (inserted.isEmpty()) {
+            throw new IllegalStateException("Unable to create mobile user profile");
+        }
+        return inserted.get(0);
     }
 
     public String roleForEmail(String email) {
@@ -53,6 +114,7 @@ public class LocalUserService {
         payload.put("email", user.email());
         payload.put("profile_picture", user.profilePicture());
         payload.put("role", user.role());
+        payload.put("mobile_number", user.mobileNumber());
         return payload;
     }
 
@@ -65,13 +127,14 @@ public class LocalUserService {
 
     private LocalUser ensureLocalUser(String email, String name, String profilePicture) {
         List<LocalUser> existing = jdbcTemplate.query(
-                "SELECT id, email, name, profile_picture, role FROM users WHERE email = ?",
+                "SELECT id, email, name, profile_picture, role, mobile_number FROM users WHERE email = ?",
                 (rs, rowNum) -> new LocalUser(
                         rs.getLong("id"),
                         rs.getString("email"),
                         rs.getString("name"),
                         rs.getString("profile_picture"),
-                        rs.getString("role")
+                        rs.getString("role"),
+                        rs.getString("mobile_number")
                 ),
                 email
         );
@@ -84,7 +147,7 @@ public class LocalUserService {
                     profilePicture,
                     current.id()
             );
-            return new LocalUser(current.id(), current.email(), name, profilePicture, current.role());
+            return new LocalUser(current.id(), current.email(), name, profilePicture, current.role(), current.mobileNumber());
         }
 
         jdbcTemplate.update(
@@ -95,13 +158,14 @@ public class LocalUserService {
         );
 
         List<LocalUser> inserted = jdbcTemplate.query(
-                "SELECT id, email, name, profile_picture, role FROM users WHERE email = ?",
+                "SELECT id, email, name, profile_picture, role, mobile_number FROM users WHERE email = ?",
                 (rs, rowNum) -> new LocalUser(
                         rs.getLong("id"),
                         rs.getString("email"),
                         rs.getString("name"),
                         rs.getString("profile_picture"),
-                        rs.getString("role")
+                        rs.getString("role"),
+                        rs.getString("mobile_number")
                 ),
                 email
         );
@@ -134,5 +198,16 @@ public class LocalUserService {
         }
 
         return "";
+    }
+
+    private String normalizeMobile(String mobileNumber) {
+        if (mobileNumber == null) {
+            return "";
+        }
+        String digits = mobileNumber.replaceAll("[^0-9]", "");
+        if (digits.length() == 12 && digits.startsWith("91")) {
+            digits = digits.substring(2);
+        }
+        return digits.length() == 10 ? digits : "";
     }
 }

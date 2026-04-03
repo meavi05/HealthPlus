@@ -27,6 +27,7 @@ export interface ReceiptResult {
     id?: number;
     name?: string;
     gstin?: string;
+    dl_no?: string;
     phone?: string;
     address?: string;
   };
@@ -47,6 +48,7 @@ export interface MedicineRow {
   stock?: number;
   category?: string;
   brand?: string;
+  pack?: string;
   mrp?: number;
   discount_percent?: number;
   requires_prescription?: number | boolean;
@@ -55,6 +57,7 @@ export interface MedicineRow {
   delivery_eta?: string;
   mapped_rows?: number;
   last_mapped_at?: string;
+  has_deal_bonus?: number | boolean;
   admin_updated_at?: string;
   admin_updated_by_name?: string;
   admin_updated_by_email?: string;
@@ -75,11 +78,15 @@ export interface MedicineInventoryDetail {
   expiry?: string;
   mrp?: number;
   rate?: number;
+  effective_rate?: number;
+  gst?: number;
   dis1?: number;
   dis2?: number;
   amount?: number;
+  deal?: string;
   quantity_added?: number;
-  bonus?: number;
+  bonus_qty?: number;
+  bonus?: number | string;
   source?: string;
   created_at?: string;
   admin_updated_at?: string;
@@ -96,6 +103,7 @@ export interface AgencyRow {
   id: number;
   name: string;
   gstin?: string;
+  dl_no?: string;
   phone?: string;
   address?: string;
   bill_count?: number;
@@ -128,7 +136,11 @@ export interface BillMedicineRow {
   expiry?: string;
   qty_fr?: string;
   quantity_added?: number;
-  bonus?: number;
+  bonus_qty?: number;
+  bonus?: number | string;
+  deal?: string;
+  rate?: number;
+  gst?: number;
   effective_rate?: number;
   mrp?: number;
   amount?: number;
@@ -147,4 +159,67 @@ export interface BillDetailsResponse {
   };
 }
 
-export type AdminView = 'overview' | 'item_master';
+export interface SalesPatientRow {
+  id: number;
+  name: string;
+  phone?: string;
+  age?: number;
+  gender?: string;
+  address?: string;
+}
+
+export interface SalesDoctorRow {
+  id: number;
+  name: string;
+  phone?: string;
+  reg_no?: string;
+  specialization?: string;
+}
+
+export interface SalesSummaryRow {
+  id: number;
+  invoice_no?: string;
+  sale_date?: string;
+  grand_total?: number;
+  total_qty?: number;
+  patient_id?: number;
+  patient_name?: string;
+  doctor_id?: number;
+  doctor_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SalesMedicineRow {
+  id: number;
+  name: string;
+  brand?: string;
+  price?: number;
+  stock?: number;
+  pack?: string;
+  stock_smallest?: number;
+  stock_pack_size?: number;
+  stock_display?: string;
+  available_lots?: number;
+  lot_available_qty?: number;
+  nearest_expiry?: string;
+  near_expiry?: boolean;
+  near_expiry_days?: number | null;
+}
+
+export interface SalesLotRow {
+  id: number;
+  batch?: string;
+  expiry?: string;
+  pack?: string;
+  pack_size?: number;
+  mrp?: number;
+  rate?: number;
+  effective_cost_price?: number;
+  available_qty?: number;
+  available_display?: string;
+  near_expiry?: boolean;
+  near_expiry_days?: number | null;
+}
+
+export type AdminView = 'overview' | 'item_master' | 'sales';

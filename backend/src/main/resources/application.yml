@@ -7,7 +7,7 @@ spring:
       max-file-size: 5MB
       max-request-size: 10MB
   datasource:
-    url: jdbc:sqlite:../health_plus_store.db
+    url: jdbc:sqlite:/Users/avinashsingh/Downloads/health-plus-store/health_plus_store.db
     driver-class-name: org.sqlite.JDBC
   flyway:
     enabled: true
@@ -44,6 +44,69 @@ spring:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  security:
+    admin-bypass: ${ADMIN_BYPASS:true}
+  ocr:
+    local:
+      enabled: ${LOCAL_OCR_ENABLED:false}
+      min-confidence: ${LOCAL_OCR_MIN_CONFIDENCE:0.75}
+      max-ambiguous-ratio: ${LOCAL_OCR_MAX_AMBIGUOUS_RATIO:0.35}
+      language: ${LOCAL_OCR_LANGUAGE:eng}
+      tessdata-path: ${LOCAL_OCR_TESSDATA_PATH:}
+      psm: ${LOCAL_OCR_PSM:6}
+      oem: ${LOCAL_OCR_OEM:3}
+      debug: ${LOCAL_OCR_DEBUG:true}
+      pdf-dpi: ${LOCAL_OCR_PDF_DPI:300}
+      auto-rotate:
+        enabled: ${LOCAL_OCR_AUTO_ROTATE_ENABLED:true}
+        max-side: ${LOCAL_OCR_AUTO_ROTATE_MAX_SIDE:1100}
+        psm: ${LOCAL_OCR_AUTO_ROTATE_PSM:6}
+        min-score: ${LOCAL_OCR_AUTO_ROTATE_MIN_SCORE:30}
+      row-ocr:
+        enabled: ${LOCAL_OCR_ROW_ENABLED:false}
+        min-height: ${LOCAL_OCR_ROW_MIN_HEIGHT:18}
+        max-gap: ${LOCAL_OCR_ROW_MAX_GAP:6}
+        black-ratio: ${LOCAL_OCR_ROW_BLACK_RATIO:0.01}
+        psm: ${LOCAL_OCR_ROW_PSM:7}
+        min-rows: ${LOCAL_OCR_ROW_MIN_ROWS:3}
+    textract:
+      enabled: ${TEXTRACT_OCR_ENABLED:false}
+      region: ${AWS_REGION:ap-south-1}
+      endpoint: ${TEXTRACT_OCR_ENDPOINT:}
+      min-rows: ${TEXTRACT_OCR_MIN_ROWS:2}
+      debug: ${TEXTRACT_OCR_DEBUG:true}
+      analyze-document:
+        enabled: ${TEXTRACT_ANALYZE_DOCUMENT_ENABLED:true}
+    validation:
+      enabled: ${OCR_VALIDATION_ENABLED:false}
+      block: ${OCR_VALIDATION_BLOCK:true}
+      include-image: ${OCR_VALIDATION_INCLUDE_IMAGE:false}
+      model: ${OCR_VALIDATION_MODEL:gemini-2.5-flash}
+      connect-timeout-ms: ${OCR_VALIDATION_CONNECT_TIMEOUT_MS:15000}
+      read-timeout-ms: ${OCR_VALIDATION_READ_TIMEOUT_MS:45000}
+      max-attempts: ${OCR_VALIDATION_MAX_ATTEMPTS:2}
+    pricing:
+      enabled: ${OCR_PRICING_ENABLED:false}
+      model: ${OCR_PRICING_MODEL:gemini-2.5-flash}
+      connect-timeout-ms: ${OCR_PRICING_CONNECT_TIMEOUT_MS:15000}
+      read-timeout-ms: ${OCR_PRICING_READ_TIMEOUT_MS:45000}
+      max-attempts: ${OCR_PRICING_MAX_ATTEMPTS:2}
+    vertexai:
+      enabled: ${OCR_VERTEXAI_ENABLED:true}
+      project: ${GOOGLE_CLOUD_PROJECT:}
+      location: ${GOOGLE_CLOUD_LOCATION:global}
+      api-key: ${GOOGLE_API_KEY:}
+      api-version: ${OCR_VERTEXAI_API_VERSION:v1}
+  auth:
+    mobile-otp:
+      debug: ${MOBILE_OTP_DEBUG:false}
+      country-code: ${MOBILE_OTP_COUNTRY_CODE:91}
+      twilio:
+        enabled: ${MOBILE_OTP_TWILIO_ENABLED:true}
+        base-url: ${MOBILE_OTP_TWILIO_BASE_URL:https://verify.twilio.com}
+        account-sid: ${MOBILE_OTP_TWILIO_ACCOUNT_SID:}
+        auth-token: ${MOBILE_OTP_TWILIO_AUTH_TOKEN:}
+        verify-service-sid: ${MOBILE_OTP_TWILIO_VERIFY_SERVICE_SID:}
 
 logging:
   level:

@@ -23,16 +23,6 @@ public class AdminInventoryController {
         this.inventoryReceiptOcrService = inventoryReceiptOcrService;
     }
 
-    @PostMapping("/ocr-upload")
-    public ResponseEntity<?> uploadInventoryReceipt(@RequestParam("file") MultipartFile file) {
-        try {
-            Map<String, Object> response = inventoryReceiptOcrService.processReceipt(file);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
-        }
-    }
-
     @PostMapping("/ocr-preview")
     public ResponseEntity<?> previewInventoryReceipt(@RequestParam("file") MultipartFile file) {
         try {

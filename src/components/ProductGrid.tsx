@@ -6,6 +6,8 @@ interface Medicine {
   description: string;
   price: number;
   stock: number;
+  pack?: string;
+  stock_display?: string;
   brand?: string;
   category?: string;
   mrp?: number;
@@ -73,6 +75,7 @@ export default function ProductGrid({
                 <p className="text-xs text-slate-500">{medicine.brand || 'HealthPlus'} • {medicine.category || 'General'}</p>
                 <h4 className="text-lg font-semibold text-slate-800 mt-1">{medicine.name}</h4>
                 <p className="text-sm text-slate-500 mt-1 line-clamp-2">{medicine.description}</p>
+                <p className="text-xs text-slate-500 mt-1">Stock: {medicine.stock_display || `${medicine.stock || 0}:0 strips`}</p>
                 <p className="text-xs text-[#2d7ff9] mt-2">Delivery: {medicine.delivery_eta || 'Tomorrow'}</p>
                 <div className="flex items-center justify-between mt-4">
                   <div>

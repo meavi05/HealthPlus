@@ -18,10 +18,16 @@ interface Medicine {
   id: number;
   name: string;
   description: string;
+  medicine_description?: string;
+  medicine_uses?: string;
+  medicine_doses?: string;
   price: number;
   stock: number;
+  pack?: string;
+  stock_display?: string;
   brand?: string;
   category?: string;
+  source?: string;
   mrp?: number;
   discount_percent?: number;
   requires_prescription?: boolean;
@@ -39,6 +45,7 @@ interface ProfileUser {
   name: string;
   email?: string;
   profile_picture?: string;
+  mobile_number?: string;
   role?: 'ROLE_ADMIN' | 'ROLE_USER';
 }
 
@@ -117,6 +124,13 @@ export default function App() {
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [mobileOtp, setMobileOtp] = useState('');
+  const [mobileName, setMobileName] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpDebugValue, setOtpDebugValue] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'gpay' | 'phonepe'>('gpay');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -313,6 +327,53 @@ export default function App() {
   const fetchProfile = () => {
     if (!user) return alert('Please log in to view profile');
     setShowProfile(true);
+  };
+
+  const sendMobileOtp = () => {
+    setLoginLoading(true);
+    setLoginError(null);
+    fetch('/api/auth/mobile/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile_number: mobileNumber }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body.message || 'Unable to send OTP');
+        }
+        setOtpSent(true);
+        setOtpDebugValue(body.debug_otp ? String(body.debug_otp) : null);
+      })
+      .catch((error: Error) => setLoginError(error.message || 'Unable to send OTP'))
+      .finally(() => setLoginLoading(false));
+  };
+
+  const verifyMobileOtp = () => {
+    setLoginLoading(true);
+    setLoginError(null);
+    fetch('/api/auth/mobile/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mobile_number: mobileNumber,
+        otp: mobileOtp,
+        name: mobileName,
+      }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body.message || 'Invalid OTP');
+        }
+        setUser(body);
+        setShowLogin(false);
+        setMobileOtp('');
+        setOtpSent(false);
+        setOtpDebugValue(null);
+      })
+      .catch((error: Error) => setLoginError(error.message || 'Unable to verify OTP'))
+      .finally(() => setLoginLoading(false));
   };
 
   useEffect(() => {
@@ -942,13 +1003,65 @@ export default function App() {
       {showLogin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-xl max-w-sm w-full mx-4 relative">
-            <button type="button" onClick={() => setShowLogin(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" aria-label="Close login">
+            <button type="button" onClick={() => {
+              setShowLogin(false);
+              setLoginError(null);
+            }} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" aria-label="Close login">
               <X size={20} />
             </button>
             <h3 className="text-xl font-semibold mb-4">Login / Register</h3>
             <div className="flex flex-col gap-4">
               <a href="/api/auth/google" className="bg-red-500 text-white py-2 rounded-lg text-center">Login with Google</a>
               <a href="/api/auth/facebook" className="bg-blue-600 text-white py-2 rounded-lg text-center">Login with Facebook</a>
+              <div className="text-center text-xs text-slate-500">or</div>
+              <input
+                type="tel"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
+                placeholder="Mobile number (10 digits)"
+                className="border rounded-lg px-3 py-2"
+              />
+              <input
+                type="text"
+                value={mobileName}
+                onChange={(e) => setMobileName(e.target.value)}
+                placeholder="Name (optional)"
+                className="border rounded-lg px-3 py-2"
+              />
+              {otpSent && (
+                <input
+                  type="text"
+                  value={mobileOtp}
+                  onChange={(e) => setMobileOtp(e.target.value)}
+                  placeholder="Enter OTP"
+                  className="border rounded-lg px-3 py-2"
+                />
+              )}
+              {otpDebugValue && (
+                <p className="text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded px-2 py-1">
+                  Dev OTP: <strong>{otpDebugValue}</strong>
+                </p>
+              )}
+              {loginError && <p className="text-xs text-red-600">{loginError}</p>}
+              {!otpSent ? (
+                <button
+                  type="button"
+                  onClick={sendMobileOtp}
+                  disabled={loginLoading || !mobileNumber.trim()}
+                  className="bg-teal-600 text-white py-2 rounded-lg disabled:opacity-60"
+                >
+                  {loginLoading ? 'Sending OTP...' : 'Send OTP'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={verifyMobileOtp}
+                  disabled={loginLoading || !mobileOtp.trim()}
+                  className="bg-teal-700 text-white py-2 rounded-lg disabled:opacity-60"
+                >
+                  {loginLoading ? 'Verifying...' : 'Verify OTP & Login'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -962,7 +1075,27 @@ export default function App() {
             </button>
             <h3 className="text-2xl font-semibold">{selectedMedicine.name}</h3>
             <p className="text-sm text-gray-600 mt-1">{selectedMedicine.brand} • {selectedMedicine.category}</p>
-            <p className="mt-4 text-gray-700">{selectedMedicine.description}</p>
+            <div className="mt-4 space-y-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
+                <p className="mt-1 text-gray-700">{selectedMedicine.medicine_description || selectedMedicine.description || 'Not available'}</p>
+                {selectedMedicine.source === 'ocr' && (
+                  <p className="mt-2 text-xs text-slate-500">Added from agency receipt OCR ingestion</p>
+                )}
+              </div>
+              {selectedMedicine.medicine_uses && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Uses</p>
+                  <p className="mt-1 text-gray-700">{selectedMedicine.medicine_uses}</p>
+                </div>
+              )}
+              {selectedMedicine.medicine_doses && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Doses</p>
+                  <p className="mt-1 text-gray-700">{selectedMedicine.medicine_doses}</p>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
               <div>Price: <strong>₹{selectedMedicine.price.toFixed(2)}</strong></div>
               <div>MRP: <strong>₹{(selectedMedicine.mrp || selectedMedicine.price).toFixed(2)}</strong></div>

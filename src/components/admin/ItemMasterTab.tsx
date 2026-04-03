@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { AgencyBillRow, AgencyRow, BillMedicineRow, MedicineRow, ReceiptResult } from './types';
-import { formatCurrency, formatDate } from './utils';
+import { formatCurrency, formatDate, formatPackSplitStock } from './utils';
 import BillScannerModal from './BillScannerModal';
 
 interface ItemMasterTabProps {
@@ -53,14 +53,18 @@ interface ReviewRowForm {
   medicine_uses: string;
   medicine_doses: string;
   bonus: string;
+  bonus_qty: string;
+  deal: string;
   batch: string;
   exp: string;
   mrp: string;
   rate: string;
+  effective_cost_price: string;
   gst: string;
   dis1: string;
   dis2: string;
   amount: string;
+  ambiguity_flags?: string[];
 }
 
 export default function ItemMasterTab({
@@ -99,15 +103,50 @@ export default function ItemMasterTab({
   onOpenBillMedicine,
   onOpenMedicineDetails,
 }: ItemMasterTabProps) {
+  const parseNumeric = (value: string) => {
+    const cleaned = value.replace(/[^0-9.]/g, '');
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const parseQtyFr = (value: string) => {
+    if (!value) return 0;
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const splitIndex = trimmed.search(/[+/]/);
+    const primary = splitIndex >= 0 ? trimmed.slice(0, splitIndex) : trimmed;
+    return parseNumeric(primary);
+  };
+
+  const hasDealBonusQty = (deal?: string, bonus?: unknown, qtyFr?: string) => {
+    const dealText = String(deal ?? '').trim();
+    const bonusText = String(bonus ?? '').trim();
+    const qtyText = String(qtyFr ?? '').trim();
+    const hasBonus = bonusText.length > 0 && (parseNumeric(bonusText) > 0 || /[A-Za-z+\/]/.test(bonusText));
+    return dealText.length > 0 || hasBonus || qtyText.includes('+') || qtyText.includes('/');
+  };
+
+  const isAmountMismatch = (row: ReviewRowForm) => {
+    if (Array.isArray(row.ambiguity_flags) && row.ambiguity_flags.includes('amount_mismatch')) {
+      return true;
+    }
+    const qty = parseQtyFr(row.qty_fr || '');
+    const rate = parseNumeric(row.rate || '');
+    const amount = parseNumeric(row.amount || '');
+    if (qty <= 0 || rate <= 0 || amount <= 0) return false;
+    return Math.abs(rate * qty - amount) > 0.1;
+  };
+  const isPackMissing = (pack?: string) => String(pack ?? '').trim().length === 0;
   const [itemMasterTab, setItemMasterTab] = useState<'agencies' | 'medicines'>('agencies');
   const [showManualEntryForm, setShowManualEntryForm] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [selectedUploadFileName, setSelectedUploadFileName] = useState<string>('');
-  const [reviewAgency, setReviewAgency] = useState({ name: '', gstin: '', phone: '', address: '' });
+  const [reviewAgency, setReviewAgency] = useState({ name: '', gstin: '', dl_no: '', phone: '', address: '' });
   const [reviewBill, setReviewBill] = useState({ invoice_no: '', bill_number: '', invoice_date: '', bill_total: '' });
   const [reviewRows, setReviewRows] = useState<ReviewRowForm[]>([]);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [reviewValidationError, setReviewValidationError] = useState<string | null>(null);
   const [manualLinkageType, setManualLinkageType] = useState<'none' | 'agency' | 'bill'>('none');
   const [manualLinkageAgencyId, setManualLinkageAgencyId] = useState<number | ''>('');
   const [manualLinkageBillId, setManualLinkageBillId] = useState<number | ''>('');
@@ -150,6 +189,7 @@ export default function ItemMasterTab({
       setReviewAgency({
         name: String(receiptResult.agency?.name || ''),
         gstin: String(receiptResult.agency?.gstin || ''),
+        dl_no: String(receiptResult.agency?.dl_no || ''),
         phone: String(receiptResult.agency?.phone || ''),
         address: String(receiptResult.agency?.address || ''),
       });
@@ -159,30 +199,37 @@ export default function ItemMasterTab({
         invoice_date: String(receiptResult.bill?.invoice_date || ''),
         bill_total: String(receiptResult.bill?.bill_total ?? ''),
       });
+      setReviewValidationError(null);
       const rows = Array.isArray(receiptResult.rows) ? receiptResult.rows : [];
-      setReviewRows(
-        rows.map((row: any) => ({
-          product: String(row.product || row.name || ''),
-          hsn: String(row.hsn || ''),
-          mfr: String(row.mfr || row.manufacturer || row.brand || ''),
-          pack: String(row.pack || ''),
-          qty_fr: String(row.qty_fr || ''),
-          medicine_category: String(row.medicine_category || row.category || ''),
-          medicine_type: String(row.medicine_type || ''),
-          medicine_description: String(row.medicine_description || row.description || ''),
-          medicine_uses: String(row.medicine_uses || ''),
-          medicine_doses: String(row.medicine_doses || ''),
-          bonus: String(row.bonus ?? 0),
-          batch: String(row.batch || ''),
-          exp: String(row.exp || row.expiry || ''),
-          mrp: String(row.mrp ?? 0),
-          rate: String(row.rate ?? row.effective_unit_rate ?? 0),
-          gst: String(row.gst ?? 0),
-          dis1: String(row.dis1 ?? 0),
-          dis2: String(row.dis2 ?? 0),
-          amount: String(row.amount ?? 0),
-        }))
-      );
+          setReviewRows(
+            rows.map((row: any) => ({
+              product: String(row.product || row.name || ''),
+              hsn: String(row.hsn || ''),
+              mfr: String(row.mfr || row.manufacturer || row.brand || ''),
+              pack: String(row.pack || ''),
+              qty_fr: String(row.qty_fr || ''),
+              medicine_category: String(row.medicine_category || row.category || ''),
+              medicine_type: String(row.medicine_type || ''),
+              medicine_description: String(row.medicine_description || row.description || ''),
+              medicine_uses: String(row.medicine_uses || ''),
+              medicine_doses: String(row.medicine_doses || ''),
+              bonus: String(row.bonus ?? 0),
+              bonus_qty: String(row.bonus_qty ?? 0),
+              deal: String(row.deal || ''),
+              batch: String(row.batch || ''),
+              exp: String(row.exp || row.expiry || ''),
+              mrp: String(row.mrp ?? 0),
+              rate: String(row.rate ?? 0),
+              effective_cost_price: String(
+                row.effective_cost_price ?? row.effective_unit_price ?? row.effective_unit_rate ?? row.effective_rate ?? 0
+              ),
+              gst: String(row.gst ?? 0),
+              dis1: String(row.dis1 ?? 0),
+              dis2: String(row.dis2 ?? 0),
+              amount: String(row.amount ?? 0),
+              ambiguity_flags: Array.isArray(row.ambiguity_flags) ? row.ambiguity_flags.map((flag: any) => String(flag)) : [],
+            }))
+          );
     }
     if (receiptResult?.mode === 'applied') {
       setReviewRows([]);
@@ -203,6 +250,10 @@ export default function ItemMasterTab({
   };
 
   const handleManualSubmit = () => {
+    if (!manualForm.pack.trim()) {
+      setManualError('Pack is required. Please add pack for this item.');
+      return;
+    }
     setManualSaving(true);
     setManualError(null);
     const payload: Record<string, unknown> = {
@@ -228,7 +279,7 @@ export default function ItemMasterTab({
       dis2: Number(manualForm.dis2 || 0),
       amount: Number(manualForm.amount || 0),
       quantity_added: Number(manualForm.quantity_added || 0),
-      bonus: Number(manualForm.bonus || 0),
+      bonus: manualForm.bonus,
       source: manualForm.source || 'manual',
       linkage_type: manualLinkageType,
       agency_id: manualLinkageAgencyId || 0,
@@ -293,10 +344,13 @@ export default function ItemMasterTab({
         medicine_uses: '',
         medicine_doses: '',
         bonus: '0',
+        bonus_qty: '0',
+        deal: '',
         batch: '',
         exp: '',
         mrp: '0',
         rate: '0',
+        effective_cost_price: '0',
         gst: '0',
         dis1: '0',
         dis2: '0',
@@ -304,6 +358,13 @@ export default function ItemMasterTab({
       },
     ]);
   };
+
+  const rowsMissingPack = reviewRows
+    .map((row, index) => ({ index: index + 1, product: String(row.product || '').trim(), missing: isPackMissing(row.pack) }))
+    .filter((entry) => entry.missing)
+    .map((entry) => (entry.product ? `#${entry.index} (${entry.product})` : `#${entry.index}`));
+  const hasRowsMissingPack = rowsMissingPack.length > 0;
+  const manualPackMissing = !manualForm.pack.trim();
 
   return (
     <div className="space-y-4">
@@ -341,6 +402,16 @@ export default function ItemMasterTab({
             {inventoryUploadLoading ? 'Running OCR Preview…' : 'Preview OCR'}
           </button>
         </div>
+        {receiptResult?.mode === 'preview' && (
+          <div className="space-y-1">
+            <p className="text-sm text-red-600">Please verify deal/bonus and update if needed.</p>
+            {hasRowsMissingPack ? (
+              <p className="text-sm text-red-700">
+                Pack is missing for row(s): {rowsMissingPack.join(', ')}. Please add pack before applying.
+              </p>
+            ) : null}
+          </div>
+        )}
         {selectedUploadFileName && (
           <p className="text-xs text-slate-600">Selected file: <strong>{selectedUploadFileName}</strong></p>
         )}
@@ -361,6 +432,9 @@ export default function ItemMasterTab({
                     </label>
                     <label className="text-xs text-slate-700">GSTIN
                       <input value={reviewAgency.gstin} onChange={(e) => setReviewAgency((s) => ({ ...s, gstin: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded px-2 py-1.5 text-xs" />
+                    </label>
+                    <label className="text-xs text-slate-700">DL No
+                      <input value={reviewAgency.dl_no} onChange={(e) => setReviewAgency((s) => ({ ...s, dl_no: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded px-2 py-1.5 text-xs" />
                     </label>
                     <label className="text-xs text-slate-700">Phone
                       <input value={reviewAgency.phone} onChange={(e) => setReviewAgency((s) => ({ ...s, phone: e.target.value }))} className="mt-1 w-full border border-[#d8e6fa] rounded px-2 py-1.5 text-xs" />
@@ -394,9 +468,34 @@ export default function ItemMasterTab({
                   </div>
                   <div className="space-y-2 max-h-[44vh] overflow-auto pr-1">
                     {reviewRows.map((row, index) => (
-                      <div key={`review-row-${index}`} className="rounded border border-[#d7e7ff] bg-white p-2">
+                      (() => {
+                        const hasDealBonus = hasDealBonusQty(row.deal, row.bonus, row.qty_fr);
+                        const amountMismatch = isAmountMismatch(row);
+                        const packMissing = isPackMissing(row.pack);
+                        return (
+                      <div
+                        key={`review-row-${index}`}
+                        className={`rounded border p-2 ${
+                          amountMismatch || packMissing
+                            ? 'border-red-300 bg-red-50'
+                            : hasDealBonus
+                              ? 'border-amber-300 bg-amber-50'
+                              : 'border-[#d7e7ff] bg-white'
+                        }`}
+                      >
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-[11px] font-semibold text-slate-700">Row #{index + 1}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] font-semibold text-slate-700">Row #{index + 1}</p>
+                            {amountMismatch && (
+                              <span className="text-[10px] rounded bg-red-100 text-red-700 px-2 py-0.5">Amount mismatch</span>
+                            )}
+                            {packMissing && (
+                              <span className="text-[10px] rounded bg-red-100 text-red-700 px-2 py-0.5">Pack missing</span>
+                            )}
+                            {hasDealBonus && (
+                              <span className="text-[10px] rounded bg-amber-100 text-amber-800 px-2 py-0.5">Deal/Bonus/QTY</span>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => setReviewRows((rows) => rows.filter((_, idx) => idx !== index))}
@@ -418,10 +517,13 @@ export default function ItemMasterTab({
                             ['medicine_uses', 'Uses'],
                             ['medicine_doses', 'Doses'],
                             ['bonus', 'Bonus'],
+                            ['bonus_qty', 'Bonus Qty'],
+                            ['deal', 'Deal'],
                             ['batch', 'Batch'],
                             ['exp', 'Expiry'],
                             ['mrp', 'MRP'],
-                            ['rate', 'Effective Price'],
+                            ['rate', 'Rate'],
+                            ['effective_cost_price', 'Effective Price'],
                             ['gst', 'GST %'],
                             ['dis1', 'Dis1 %'],
                             ['dis2', 'Dis2 %'],
@@ -436,19 +538,30 @@ export default function ItemMasterTab({
                                     rows.map((entry, idx) => (idx === index ? { ...entry, [field]: e.target.value } : entry))
                                   )
                                 }
-                                className="mt-1 w-full border border-[#d8e6fa] rounded px-2 py-1.5 text-xs"
+                                className={`mt-1 w-full rounded px-2 py-1.5 text-xs ${
+                                  field === 'pack' && packMissing
+                                    ? 'border border-red-300 bg-red-50'
+                                    : 'border border-[#d8e6fa]'
+                                }`}
                               />
                             </label>
                           ))}
                         </div>
                       </div>
+                        );
+                      })()
                     ))}
                   </div>
                 </div>
-                {inventoryApplyError && <p className="text-sm text-red-600">{inventoryApplyError}</p>}
+                {(reviewValidationError || inventoryApplyError) && <p className="text-sm text-red-600">{reviewValidationError || inventoryApplyError}</p>}
                 <button
                   type="button"
                   onClick={() => {
+                    if (hasRowsMissingPack) {
+                      setReviewValidationError('Pack is required for all rows. Please add pack and retry.');
+                      return;
+                    }
+                    setReviewValidationError(null);
                     onApplyInventoryReview({
                       agency: reviewAgency,
                       bill: {
@@ -466,11 +579,13 @@ export default function ItemMasterTab({
                         medicine_description: row.medicine_description,
                         medicine_uses: row.medicine_uses,
                         medicine_doses: row.medicine_doses,
-                        bonus: Number(row.bonus || 0),
+                        bonus: row.bonus,
+                        deal: row.deal,
                         batch: row.batch,
                         exp: row.exp,
                         mrp: Number(row.mrp || 0),
                         rate: Number(row.rate || 0),
+                        effective_cost_price: Number(row.effective_cost_price || 0),
                         gst: Number(row.gst || 0),
                         dis1: Number(row.dis1 || 0),
                         dis2: Number(row.dis2 || 0),
@@ -478,7 +593,7 @@ export default function ItemMasterTab({
                       })),
                     }).catch(() => {});
                   }}
-                  disabled={inventoryApplyLoading}
+                  disabled={inventoryApplyLoading || hasRowsMissingPack}
                   className="px-3 py-2 text-sm rounded-lg bg-emerald-600 text-white disabled:opacity-60"
                 >
                   {inventoryApplyLoading ? 'Applying...' : 'Apply to Inventory'}
@@ -649,11 +764,12 @@ export default function ItemMasterTab({
               </div>
 
               {manualError && <p className="text-sm text-red-600">{manualError}</p>}
+              {manualPackMissing ? <p className="text-xs text-red-700">Pack is required before adding this inventory entry.</p> : null}
               <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={handleManualSubmit}
-                  disabled={manualSaving}
+                  disabled={manualSaving || manualPackMissing}
                   className="rounded-lg bg-[#2d7ff9] text-white px-4 py-2 text-sm disabled:opacity-60"
                 >
                   {manualSaving ? 'Adding...' : 'Add to Inventory'}
@@ -702,7 +818,7 @@ export default function ItemMasterTab({
                     type="text"
                     value={agencyQuery}
                     onChange={(e) => onAgencyQueryChange(e.target.value)}
-                    placeholder="Search agency by name, GSTIN, address..."
+                    placeholder="Search agency by name, GSTIN, DL No, address..."
                     className="w-full sm:w-80 border border-[#d8e6fa] rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
@@ -721,6 +837,7 @@ export default function ItemMasterTab({
                           className="w-full text-left rounded-xl border border-[#dfebff] bg-white hover:bg-[#f6faff] px-3 py-2 transition-colors"
                         >
                           <p className="font-semibold text-sm text-slate-800">{agency.name}</p>
+                          <p className="text-xs text-slate-500">GSTIN: {agency.gstin || '-'} • DL: {agency.dl_no || '-'}</p>
                         </button>
                       ))}
                     </div>
@@ -743,6 +860,7 @@ export default function ItemMasterTab({
                   <h3 className="font-semibold text-slate-800">{selectedAgency.name}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-xs text-slate-600">
                     <p>GSTIN: <strong>{selectedAgency.gstin || '-'}</strong></p>
+                    <p>DL No: <strong>{selectedAgency.dl_no || '-'}</strong></p>
                     <p>Phone: <strong>{selectedAgency.phone || '-'}</strong></p>
                     <p className="md:col-span-2">Address: <strong>{selectedAgency.address || '-'}</strong></p>
                     <p>Bills: <strong>{selectedAgency.bill_count ?? 0}</strong></p>
@@ -829,23 +947,37 @@ export default function ItemMasterTab({
                   ) : (
                     <div className="space-y-2">
                       {billMedicines.map((line) => (
+                        (() => {
+                          const hasDealBonus = hasDealBonusQty(line.deal, line.bonus, line.qty_fr);
+                          return (
                         <button
                           key={line.id}
                           type="button"
                           onClick={() => onOpenBillMedicine(line)}
-                          className="w-full text-left rounded-xl border border-[#deebff] bg-white p-2.5 hover:bg-[#f4f8ff]"
+                          className={`w-full text-left rounded-xl border p-2.5 ${
+                            hasDealBonus
+                              ? 'border-amber-200 bg-amber-50 hover:bg-amber-100'
+                              : 'border-[#deebff] bg-white hover:bg-[#f4f8ff]'
+                          }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-semibold text-slate-800">{line.medicine_name}</p>
                             <p className="text-xs text-slate-500">Batch {line.batch || '-'}</p>
                           </div>
-                          <div className="mt-1 text-xs text-slate-600 grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="mt-1 text-xs text-slate-600 grid grid-cols-2 md:grid-cols-6 gap-2">
                             <span>Qty: <strong>{line.quantity_added ?? 0}</strong></span>
                             <span>Bonus: <strong>{line.bonus ?? 0}</strong></span>
+                            <span>Bonus Qty: <strong>{line.bonus_qty ?? 0}</strong></span>
+                            <span>Deal: <strong>{line.deal || '-'}</strong></span>
+                            <span>Rate: <strong>{formatCurrency(line.rate)}</strong></span>
+                            <span>MRP: <strong>{formatCurrency(line.mrp)}</strong></span>
+                            <span>GST: <strong>{line.gst ?? 0}%</strong></span>
                             <span>Effective Price: <strong>{formatCurrency(line.effective_rate)}</strong></span>
                             <span>Total Amount: <strong>{formatCurrency(line.amount)}</strong></span>
                           </div>
                         </button>
+                          );
+                        })()
                       ))}
                     </div>
                   )}
@@ -875,23 +1007,37 @@ export default function ItemMasterTab({
             ) : (
               <div className="space-y-2 max-h-[52rem] overflow-auto pr-1">
                 {itemMasterMedicines.map((medicine) => (
+                  (() => {
+                    const hasDealBonus = Boolean(medicine.has_deal_bonus);
+                    return (
                   <button
                     key={medicine.id}
                     type="button"
                     onClick={() => onOpenMedicineDetails(medicine)}
-                    className="w-full text-left border rounded-xl p-3 bg-slate-50 hover:bg-[#edf4ff] hover:border-[#9fc4ff] transition-colors"
+                    className={`w-full text-left border rounded-xl p-3 transition-colors ${
+                      hasDealBonus
+                        ? 'border-amber-200 bg-amber-50 hover:bg-amber-100'
+                        : 'bg-slate-50 hover:bg-[#edf4ff] hover:border-[#9fc4ff]'
+                    }`}
                   >
-                    <p className="font-medium text-slate-800">{medicine.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-800">{medicine.name}</p>
+                      {hasDealBonus && (
+                        <span className="text-[10px] rounded bg-amber-100 text-amber-800 px-2 py-0.5">Deal/Bonus/QTY</span>
+                      )}
+                    </div>
                     <p className="text-slate-500 text-xs mt-1">
                       {medicine.brand || 'Unspecified'} • {medicine.category || 'General'}
                     </p>
                     <div className="mt-2 grid grid-cols-2 gap-1 text-xs">
                       <span className="text-slate-600">Effective Price: <strong>{formatCurrency(medicine.price)}</strong></span>
                       <span className="text-slate-600">MRP: <strong>{formatCurrency(medicine.mrp)}</strong></span>
-                      <span className="text-slate-600">Stock: <strong>{medicine.stock ?? 0}</strong></span>
+                      <span className="text-slate-600">Stock: <strong>{formatPackSplitStock(medicine.stock, medicine.pack)}</strong></span>
                       <span className="text-slate-600">Mapped rows: <strong>{medicine.mapped_rows ?? 0}</strong></span>
                     </div>
                   </button>
+                    );
+                  })()
                 ))}
               </div>
             )}

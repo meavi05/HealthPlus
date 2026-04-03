@@ -20,12 +20,13 @@ public class UserService {
 
     public Optional<UserProfile> getUser(Long userId) {
         List<UserProfile> users = jdbcTemplate.query(
-                "SELECT id, email, name, profile_picture FROM users WHERE id = ?",
+                "SELECT id, email, name, profile_picture, mobile_number FROM users WHERE id = ?",
                 (rs, rowNum) -> new UserProfile(
                         rs.getLong("id"),
                         rs.getString("email"),
                         rs.getString("name"),
-                        rs.getString("profile_picture")
+                        rs.getString("profile_picture"),
+                        rs.getString("mobile_number")
                 ),
                 userId
         );

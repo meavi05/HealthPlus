@@ -3,6 +3,7 @@ import AdminHeader from './AdminHeader';
 import ItemMasterTab from './ItemMasterTab';
 import MedicineDetailsModal from './MedicineDetailsModal';
 import OverviewTab from './OverviewTab';
+import SalesTab from './SalesTab';
 import {
   AgencyBillRow,
   AgencyRow,
@@ -279,6 +280,7 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       expiry: string;
       mrp: number;
       rate: number;
+      gst: number;
       dis1: number;
       dis2: number;
       amount: number;
@@ -458,6 +460,8 @@ export default function AdminPanel({ show }: AdminPanelProps) {
           onOpenMedicineDetails={openMedicineDetails}
         />
       )}
+
+      {adminView === 'sales' && <SalesTab />}
 
       <MedicineDetailsModal
         selectedMedicine={selectedMedicine}

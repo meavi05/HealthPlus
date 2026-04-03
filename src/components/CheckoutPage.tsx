@@ -7,6 +7,8 @@ interface Medicine {
   description: string;
   price: number;
   stock: number;
+  pack?: string;
+  stock_display?: string;
 }
 
 interface CartItem extends Medicine {
