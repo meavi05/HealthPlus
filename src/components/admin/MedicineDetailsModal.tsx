@@ -28,7 +28,16 @@ interface MedicineDetailsModalProps {
       dis2: number;
       amount: number;
       quantity_added: number;
+      bonus_qty?: number;
+      purchase_qty_entered?: number;
+      purchase_qty_base?: number;
+      bonus_qty_entered?: number;
+      bonus_qty_base?: number;
+      sold_qty_base?: number;
+      pack_size?: number;
+      purchase_uom?: string;
       bonus: number;
+      deal: string;
       source: string;
     }
   ) => Promise<unknown>;
@@ -160,7 +169,7 @@ export default function MedicineDetailsModal({
               <p className="text-sm text-slate-600 mt-3">{selectedMedicine.description || 'No description available.'}</p>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <DetailChip label="MRP" value={formatCurrency(latestMrp)} />
-                <DetailChip label="Effective Price" value={formatCurrency(latestEffective)} />
+                <DetailChip label="Effective Price" value={formatCurrency(latestEffective, 4)} />
                 <DetailChip label="Stock" value={formatPackSplitStock(selectedMedicine.stock, latestPack)} />
                 <DetailChip label="Discount" value={toPercent(selectedMedicine.discount_percent)} />
               </div>
@@ -201,11 +210,11 @@ export default function MedicineDetailsModal({
                   />
                   <DetailChip
                     label="Total Bonus"
-                    value={selectedMedicineDetails.reduce((sum, item) => sum + (item.bonus || 0), 0)}
+                    value={selectedMedicineDetails.reduce((sum, item) => sum + Number(item.bonus || 0), 0)}
                   />
                   <DetailChip
                     label="Latest Effective Price"
-                    value={formatCurrency(selectedMedicineDetails[0]?.effective_rate ?? selectedMedicineDetails[0]?.rate)}
+                    value={formatCurrency(selectedMedicineDetails[0]?.effective_rate ?? selectedMedicineDetails[0]?.rate, 4)}
                   />
                   <DetailChip label="Latest MRP" value={formatCurrency(latestMrp)} />
                 </div>
@@ -408,7 +417,7 @@ export default function MedicineDetailsModal({
                           <MiniStat label="Mfr" value={detail.manufacturer || '-'} />
                           <MiniStat label="Rate" value={formatCurrency(detail.rate)} />
                           <MiniStat label="GST" value={toPercent(detail.gst)} />
-                          <MiniStat label="Effective Price" value={formatCurrency(detail.effective_rate ?? detail.rate)} />
+                          <MiniStat label="Effective Price" value={formatCurrency(detail.effective_rate ?? detail.rate, 4)} />
                           <MiniStat label="MRP" value={formatCurrency(detail.mrp)} />
                           <MiniStat label="Dis1" value={toPercent(detail.dis1)} />
                           <MiniStat label="Dis2" value={toPercent(detail.dis2)} />

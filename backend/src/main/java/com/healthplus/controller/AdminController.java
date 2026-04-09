@@ -1,5 +1,6 @@
 package com.healthplus.controller;
 
+import com.healthplus.service.InventoryQuantityUtils;
 import com.healthplus.security.LocalUser;
 import com.healthplus.security.LocalUserService;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.Map;
 @RequestMapping("/api/admin")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminController {
+    private static final java.util.regex.Pattern NUMBER_TOKEN_PATTERN = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)");
     private final JdbcTemplate jdbcTemplate;
     private final LocalUserService localUserService;
 
@@ -194,7 +196,7 @@ public class AdminController {
                                        WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '/') - 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '+') - 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '/') - 1) AS INTEGER)
-                                       ELSE COALESCE(mid.quantity_added, 0)
+                                       ELSE COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                      END) > 0
                                     AND
                                     (CASE
@@ -202,7 +204,7 @@ public class AdminController {
                                        WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), instr(COALESCE(mid.qty_fr, ''), '/') + 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '+') + 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '/') + 1) AS INTEGER)
-                                       ELSE COALESCE(mid.bonus_qty, 0)
+                                       ELSE COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0)
                                      END) > 0
                                     THEN (
                                       (CASE
@@ -210,21 +212,21 @@ public class AdminController {
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '/') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '+') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '/') - 1) AS INTEGER)
-                                         ELSE COALESCE(mid.quantity_added, 0)
+                                         ELSE COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                        END) * 1.0 /
                                       ((CASE
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '+') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '/') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '+') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '/') - 1) AS INTEGER)
-                                         ELSE COALESCE(mid.quantity_added, 0)
+                                         ELSE COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                        END) +
                                        (CASE
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), instr(COALESCE(mid.qty_fr, ''), '+') + 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), instr(COALESCE(mid.qty_fr, ''), '/') + 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '+') + 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '/') + 1) AS INTEGER)
-                                         ELSE COALESCE(mid.bonus_qty, 0)
+                                         ELSE COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0)
                                        END))
                                     )
                                   ELSE 1
@@ -232,9 +234,20 @@ public class AdminController {
                             )
                           END),
                          0
-                       ), 2) as effective_rate,
+                       ), 4) as effective_rate,
                        ROUND(mid.dis1, 2) as dis1, ROUND(mid.dis2, 2) as dis2, ROUND(mid.amount, 2) as amount,
-                       mid.deal, mid.quantity_added, mid.bonus_qty,
+                       mid.deal,
+                       mid.quantity_added,
+                       COALESCE(mid.purchase_qty_entered, mid.quantity_added) AS purchase_qty_entered,
+                       COALESCE(mid.purchase_qty_base, 0) AS purchase_qty_base,
+                       mid.bonus_qty,
+                       COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0) AS bonus_qty_entered,
+                       COALESCE(mid.bonus_qty_base, 0) AS bonus_qty_base,
+                       COALESCE(mid.sold_qty_base, COALESCE(mid.sold_qty, 0)) AS sold_qty_base,
+                       COALESCE(mid.pack_size, 1) AS pack_size,
+                       COALESCE(mid.base_uom, '') AS base_uom,
+                       COALESCE(mid.pack_uom, '') AS pack_uom,
+                       COALESCE(mid.purchase_uom, '') AS purchase_uom,
                        COALESCE(mid.bonus, '') as bonus,
                        mid.source, mid.medicine_category, mid.medicine_type, mid.medicine_description, mid.medicine_uses, mid.medicine_doses,
                        mid.created_at, mid.admin_updated_at,
@@ -343,7 +356,7 @@ public class AdminController {
         LocalUser admin = localUserService.resolveOrCreate(authentication);
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, medicine_id, medicine_name, brand, hsn, manufacturer, pack, qty_fr, batch, expiry, mrp, rate, gst, dis1, dis2, amount, deal, quantity_added, bonus_qty, bonus, source, medicine_category, medicine_type, medicine_description, medicine_uses, medicine_doses FROM medicine_inventory_details WHERE id = ? LIMIT 1",
+                "SELECT id, medicine_id, medicine_name, brand, hsn, manufacturer, pack, pack_size, base_uom, pack_uom, purchase_uom, qty_fr, batch, expiry, mrp, rate, gst, dis1, dis2, amount, deal, quantity_added, purchase_qty_entered, purchase_qty_base, bonus_qty, bonus_qty_entered, bonus_qty_base, sold_qty, sold_qty_base, bonus, source, medicine_category, medicine_type, medicine_description, medicine_uses, medicine_doses FROM medicine_inventory_details WHERE id = ? LIMIT 1",
                 detailId
         );
         if (rows.isEmpty()) {
@@ -366,13 +379,41 @@ public class AdminController {
         double dis2 = round2(valueOrCurrentDouble(request, "dis2", current.get("dis2")));
         double amount = round2(valueOrCurrentDouble(request, "amount", current.get("amount")));
         String deal = valueOrCurrentString(request, "deal", current.get("deal"));
-        int currentQuantityUnits = current.get("quantity_added") instanceof Number number ? Math.max(0, number.intValue()) : 0;
-        int currentBonusUnits = current.get("bonus_qty") instanceof Number number ? Math.max(0, number.intValue()) : 0;
-        int quantityAdded = parseQtyPart(request.get("quantity_added"), currentQuantityUnits);
+        String currentPackText = current.get("pack") == null ? "" : String.valueOf(current.get("pack"));
+        int currentPackSize = current.get("pack_size") instanceof Number number ? Math.max(1, number.intValue()) : 0;
+        if (currentPackSize <= 0) {
+            currentPackSize = parsePackSize(currentPackText);
+        }
+        String currentBaseUom = normalizeUomValue(current.get("base_uom"), InventoryQuantityUtils.baseUomFromPackSize(currentPackSize));
+        String currentPackUom = normalizeUomValue(current.get("pack_uom"), InventoryQuantityUtils.packUomFromPackSize(currentPackSize));
+        String currentPurchaseUom = normalizeUomValue(current.get("purchase_uom"), currentPackUom);
+        int currentQuantityEntered = current.get("purchase_qty_entered") instanceof Number number ? Math.max(0, number.intValue()) : 0;
+        if (currentQuantityEntered <= 0 && current.get("quantity_added") instanceof Number number) {
+            currentQuantityEntered = Math.max(0, number.intValue());
+        }
+        int currentBonusEntered = current.get("bonus_qty_entered") instanceof Number number ? Math.max(0, number.intValue()) : 0;
+        if (currentBonusEntered <= 0 && current.get("bonus_qty") instanceof Number number) {
+            currentBonusEntered = Math.max(0, number.intValue());
+        }
+        int currentPurchaseBase = current.get("purchase_qty_base") instanceof Number number ? Math.max(0, number.intValue()) : 0;
+        if (currentPurchaseBase <= 0) {
+            currentPurchaseBase = InventoryQuantityUtils.toBaseUnits(currentQuantityEntered, currentPackSize);
+        }
+        int currentBonusBase = current.get("bonus_qty_base") instanceof Number number ? Math.max(0, number.intValue()) : 0;
+        if (currentBonusBase <= 0) {
+            currentBonusBase = InventoryQuantityUtils.toBaseUnits(currentBonusEntered, currentPackSize);
+        }
+        int currentSoldBase = current.get("sold_qty_base") instanceof Number number ? Math.max(0, number.intValue()) : 0;
+        if (currentSoldBase <= 0 && current.get("sold_qty") instanceof Number number) {
+            currentSoldBase = Math.max(0, number.intValue());
+        }
+
+        int quantityAdded = parseQtyPart(request.get("quantity_added"), currentQuantityEntered);
         int quantityFromQtyFr = parseQtyPart(qtyFr, 0);
         String bonusText = normalizeBonusText(valueOrCurrentString(request, "bonus", current.get("bonus")), qtyFr);
         int bonusQty = parseBonusFromQtyFr(qtyFr);
-        int bonusQtyFromRequest = parseQtyPart(request.get("bonus_qty"), currentBonusUnits);
+        int bonusQtyFromRequest = parseQtyPart(request.get("bonus_qty"), currentBonusEntered);
+        int bonusQtyFromBonusText = parseBonusText(bonusText);
         String source = valueOrCurrentString(request, "source", current.get("source"));
         String medicineCategory = valueOrCurrentString(request, "medicine_category", current.get("medicine_category"));
         String medicineType = valueOrCurrentString(request, "medicine_type", current.get("medicine_type"));
@@ -383,27 +424,59 @@ public class AdminController {
         if (pack.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Pack is required. Please add pack for this item."));
         }
+        InventoryQuantityUtils.PackInfo parsedPack = InventoryQuantityUtils.parsePackInfo(pack);
+        int packSize = parsedPack.packSize();
+        String baseUom = parsedPack.baseUom();
+        String packUom = parsedPack.packUom();
+        String purchaseUom = parsedPack.purchaseUom();
+        if (parsedPack.ambiguous()) {
+            boolean packWasUpdated = request.containsKey("pack");
+            if (packWasUpdated || currentBaseUom.isBlank() || currentPackUom.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message",
+                        "Pack format is ambiguous for \"" + pack + "\". " + parsedPack.reason()
+                                + ". Use explicit format like 1x10 TAB, 100 ML, 60 GM, 1x15 CAP."
+                ));
+            }
+            packSize = currentPackSize;
+            baseUom = currentBaseUom;
+            packUom = currentPackUom;
+            purchaseUom = currentPurchaseUom;
+        }
 
-        int quantityAddedUnits = quantityFromQtyFr > 0
-                ? toSmallestUnits(quantityFromQtyFr, pack)
-                : (request.containsKey("quantity_added") ? toSmallestUnits(quantityAdded, pack) : currentQuantityUnits);
-        int bonusQtyUnits = bonusQty > 0
-                ? toSmallestUnits(bonusQty, pack)
-                : (request.containsKey("bonus_qty") ? toSmallestUnits(bonusQtyFromRequest, pack) : currentBonusUnits);
-        if (mrp < 0 || rate < 0 || gst < 0 || dis1 < 0 || dis2 < 0 || amount < 0 || quantityAddedUnits < 0) {
+        int purchaseQtyEntered = quantityFromQtyFr > 0
+                ? quantityFromQtyFr
+                : (request.containsKey("quantity_added") ? quantityAdded : currentQuantityEntered);
+        int bonusQtyEntered = bonusQty > 0
+                ? bonusQty
+                : (request.containsKey("bonus_qty") ? bonusQtyFromRequest : currentBonusEntered);
+        if (bonusQtyEntered <= 0) {
+            bonusQtyEntered = bonusQtyFromBonusText;
+        }
+        int purchaseQtyBase = InventoryQuantityUtils.toBaseUnits(purchaseQtyEntered, packSize);
+        int bonusQtyBase = InventoryQuantityUtils.toBaseUnits(bonusQtyEntered, packSize);
+        int nextTotalBase = purchaseQtyBase + bonusQtyBase;
+        int currentTotalBase = currentPurchaseBase + currentBonusBase;
+        if (nextTotalBase < currentSoldBase) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Cannot reduce quantity below already sold stock"));
+        }
+        if (mrp < 0 || rate < 0 || gst < 0 || dis1 < 0 || dis2 < 0 || amount < 0 || purchaseQtyBase < 0 || bonusQtyBase < 0) {
             return ResponseEntity.badRequest().body(Map.of("message", "Numeric fields must be non-negative"));
         }
 
         String resolvedName = medicineName.isBlank() ? "" : medicineName.trim();
         String resolvedBrand = brand.isBlank() ? "Unspecified" : brand.trim();
         long medicineId = ((Number) current.get("medicine_id")).longValue();
-        int stockDelta = (quantityAddedUnits + bonusQtyUnits) - (currentQuantityUnits + currentBonusUnits);
+        int stockDelta = nextTotalBase - currentTotalBase;
 
         jdbcTemplate.update(
                 """
                 UPDATE medicine_inventory_details
-                SET medicine_name = ?, brand = ?, hsn = ?, manufacturer = ?, pack = ?, qty_fr = ?, batch = ?, expiry = ?,
-                    mrp = ?, rate = ?, gst = ?, dis1 = ?, dis2 = ?, amount = ?, deal = ?, quantity_added = ?, bonus_qty = ?, bonus = ?, source = ?,
+                SET medicine_name = ?, brand = ?, hsn = ?, manufacturer = ?, pack = ?, pack_size = ?, base_uom = ?, pack_uom = ?, purchase_uom = ?, qty_fr = ?, batch = ?, expiry = ?,
+                    mrp = ?, rate = ?, gst = ?, dis1 = ?, dis2 = ?, amount = ?, deal = ?,
+                    quantity_added = ?, purchase_qty_entered = ?, purchase_qty_base = ?,
+                    bonus_qty = ?, bonus_qty_entered = ?, bonus_qty_base = ?, sold_qty = ?, sold_qty_base = ?,
+                    bonus = ?, source = ?,
                     medicine_category = ?, medicine_type = ?, medicine_description = ?, medicine_uses = ?, medicine_doses = ?,
                     admin_updated_by_user_id = ?, admin_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -413,6 +486,10 @@ public class AdminController {
                 hsn,
                 manufacturer,
                 pack,
+                packSize,
+                baseUom,
+                packUom,
+                purchaseUom,
                 qtyFr,
                 batch,
                 expiry,
@@ -423,8 +500,14 @@ public class AdminController {
                 dis2,
                 amount,
                 deal,
-                quantityAddedUnits,
-                bonusQtyUnits,
+                purchaseQtyEntered,
+                purchaseQtyEntered,
+                purchaseQtyBase,
+                bonusQtyEntered,
+                bonusQtyEntered,
+                bonusQtyBase,
+                currentSoldBase,
+                currentSoldBase,
                 bonusText,
                 source,
                 medicineCategory,
@@ -518,10 +601,24 @@ public class AdminController {
         String medicineDoses = valueOrCurrentString(request, "medicine_doses", "");
         String bonusText = normalizeBonusText(valueOrCurrentString(request, "bonus", ""), qtyFr);
         int bonusQty = parseBonusFromQtyFr(qtyFr);
+        int bonusQtyFromRequest = parseQtyPart(request.get("bonus_qty"), bonusQty);
+        int bonusQtyFromBonusText = parseBonusText(bonusText);
 
         if (pack.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Pack is required. Please add pack for this item."));
         }
+        InventoryQuantityUtils.PackInfo packInfo = InventoryQuantityUtils.parsePackInfo(pack);
+        if (packInfo.ambiguous()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message",
+                    "Pack format is ambiguous for \"" + pack + "\". " + packInfo.reason()
+                            + ". Use explicit format like 1x10 TAB, 100 ML, 60 GM, 1x15 CAP."
+            ));
+        }
+        int packSize = packInfo.packSize();
+        String baseUom = packInfo.baseUom();
+        String packUom = packInfo.packUom();
+        String purchaseUom = packInfo.purchaseUom();
 
         if (rate < 0 || mrp < 0 || gst < 0) {
             return ResponseEntity.badRequest().body(Map.of("message", "Rate, MRP, and GST should be non-negative"));
@@ -530,9 +627,15 @@ public class AdminController {
         if (quantityFromQtyFr > 0) {
             quantityAdded = quantityFromQtyFr;
         }
-        int quantityAddedUnits = toSmallestUnits(quantityAdded, pack);
-        int bonusQtyUnits = toSmallestUnits(bonusQty, pack);
-        int totalUnits = quantityAddedUnits + bonusQtyUnits;
+        if (bonusQty <= 0 && request.containsKey("bonus_qty")) {
+            bonusQty = bonusQtyFromRequest;
+        }
+        if (bonusQty <= 0) {
+            bonusQty = bonusQtyFromBonusText;
+        }
+        int purchaseQtyBase = InventoryQuantityUtils.toBaseUnits(quantityAdded, packSize);
+        int bonusQtyBase = InventoryQuantityUtils.toBaseUnits(bonusQty, packSize);
+        int totalUnits = purchaseQtyBase + bonusQtyBase;
         if (totalUnits <= 0) {
             return ResponseEntity.badRequest().body(Map.of("message", "Quantity added should be greater than 0"));
         }
@@ -574,16 +677,24 @@ public class AdminController {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         long finalMedicineId = medicineId;
             String finalResolvedBrand = resolvedBrand;
-            int finalQuantityAdded = quantityAddedUnits;
-            int finalBonusQty = bonusQtyUnits;
+            int finalPurchaseQtyEntered = quantityAdded;
+            int finalPurchaseQtyBase = purchaseQtyBase;
+            int finalBonusQtyEntered = bonusQty;
+            int finalBonusQtyBase = bonusQtyBase;
+            int finalPackSize = packSize;
+            String finalBaseUom = baseUom;
+            String finalPackUom = packUom;
+            String finalPurchaseUom = purchaseUom;
             jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(
                     """
                     INSERT INTO medicine_inventory_details
-                    (medicine_id, medicine_name, brand, agency_bill_id, hsn, manufacturer, pack, qty_fr, batch, expiry, mrp, rate, gst, dis1, dis2, amount, deal, quantity_added, bonus_qty, bonus, source,
+                    (medicine_id, medicine_name, brand, agency_bill_id, hsn, manufacturer, pack, pack_size, base_uom, pack_uom, purchase_uom, qty_fr, batch, expiry, mrp, rate, gst, dis1, dis2, amount, deal,
+                     quantity_added, purchase_qty_entered, purchase_qty_base,
+                     bonus_qty, bonus_qty_entered, bonus_qty_base, sold_qty_base, sold_qty, bonus, source,
                      medicine_category, medicine_type, medicine_description, medicine_uses, medicine_doses,
                      admin_updated_by_user_id, admin_updated_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """,
                     Statement.RETURN_GENERATED_KEYS
             );
@@ -598,26 +709,34 @@ public class AdminController {
             ps.setString(5, hsn);
             ps.setString(6, manufacturer);
             ps.setString(7, pack);
-            ps.setString(8, qtyFr);
-            ps.setString(9, batch);
-            ps.setString(10, expiry);
-            ps.setDouble(11, mrp);
-            ps.setDouble(12, rate);
-            ps.setDouble(13, gst);
-            ps.setDouble(14, dis1);
-            ps.setDouble(15, dis2);
-            ps.setDouble(16, amount);
-            ps.setString(17, deal);
-            ps.setInt(18, finalQuantityAdded);
-            ps.setInt(19, finalBonusQty);
-            ps.setString(20, bonusText);
-            ps.setString(21, source.isBlank() ? "manual" : source);
-            ps.setString(22, medicineCategory);
-            ps.setString(23, medicineType);
-            ps.setString(24, medicineDescription);
-            ps.setString(25, medicineUses);
-            ps.setString(26, medicineDoses);
-            ps.setLong(27, admin.id());
+            ps.setInt(8, finalPackSize);
+            ps.setString(9, finalBaseUom);
+            ps.setString(10, finalPackUom);
+            ps.setString(11, finalPurchaseUom);
+            ps.setString(12, qtyFr);
+            ps.setString(13, batch);
+            ps.setString(14, expiry);
+            ps.setDouble(15, mrp);
+            ps.setDouble(16, rate);
+            ps.setDouble(17, gst);
+            ps.setDouble(18, dis1);
+            ps.setDouble(19, dis2);
+            ps.setDouble(20, amount);
+            ps.setString(21, deal);
+            ps.setInt(22, finalPurchaseQtyEntered);
+            ps.setInt(23, finalPurchaseQtyEntered);
+            ps.setInt(24, finalPurchaseQtyBase);
+            ps.setInt(25, finalBonusQtyEntered);
+            ps.setInt(26, finalBonusQtyEntered);
+            ps.setInt(27, finalBonusQtyBase);
+            ps.setString(28, bonusText);
+            ps.setString(29, source.isBlank() ? "manual" : source);
+            ps.setString(30, medicineCategory);
+            ps.setString(31, medicineType);
+            ps.setString(32, medicineDescription);
+            ps.setString(33, medicineUses);
+            ps.setString(34, medicineDoses);
+            ps.setLong(35, admin.id());
             return ps;
         }, keyHolder);
 
@@ -639,7 +758,7 @@ public class AdminController {
     @DeleteMapping("/inventory-details/{detailId}")
     public ResponseEntity<?> deleteInventoryDetail(@PathVariable Long detailId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, medicine_id, COALESCE(quantity_added, 0) AS quantity_added, COALESCE(bonus_qty, 0) AS bonus_qty FROM medicine_inventory_details WHERE id = ? LIMIT 1",
+                "SELECT id, medicine_id, pack, COALESCE(pack_size, 0) AS pack_size, COALESCE(quantity_added, 0) AS quantity_added, COALESCE(purchase_qty_base, 0) AS purchase_qty_base, COALESCE(bonus_qty, 0) AS bonus_qty, COALESCE(bonus_qty_base, 0) AS bonus_qty_base, COALESCE(sold_qty, 0) AS sold_qty, COALESCE(sold_qty_base, 0) AS sold_qty_base FROM medicine_inventory_details WHERE id = ? LIMIT 1",
                 detailId
         );
         if (rows.isEmpty()) {
@@ -648,9 +767,28 @@ public class AdminController {
 
         Map<String, Object> detail = rows.get(0);
         long medicineId = ((Number) detail.get("medicine_id")).longValue();
-        int quantityAdded = ((Number) detail.getOrDefault("quantity_added", 0)).intValue();
-        int bonusQty = ((Number) detail.getOrDefault("bonus_qty", 0)).intValue();
-        int totalUnits = Math.max(0, quantityAdded) + Math.max(0, bonusQty);
+        String detailPack = detail.get("pack") == null ? "" : String.valueOf(detail.get("pack"));
+        int packSize = detail.get("pack_size") instanceof Number number && number.intValue() > 0
+                ? number.intValue()
+                : parsePackSize(detailPack);
+        int quantityEntered = ((Number) detail.getOrDefault("quantity_added", 0)).intValue();
+        int bonusEntered = ((Number) detail.getOrDefault("bonus_qty", 0)).intValue();
+        int quantityBase = ((Number) detail.getOrDefault("purchase_qty_base", 0)).intValue();
+        if (quantityBase <= 0) {
+            quantityBase = InventoryQuantityUtils.toBaseUnits(quantityEntered, packSize);
+        }
+        int bonusBase = ((Number) detail.getOrDefault("bonus_qty_base", 0)).intValue();
+        if (bonusBase <= 0) {
+            bonusBase = InventoryQuantityUtils.toBaseUnits(bonusEntered, packSize);
+        }
+        int soldBase = ((Number) detail.getOrDefault("sold_qty_base", 0)).intValue();
+        if (soldBase <= 0) {
+            soldBase = ((Number) detail.getOrDefault("sold_qty", 0)).intValue();
+        }
+        if (soldBase > 0) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Cannot delete inventory detail that already has sold quantity"));
+        }
+        int totalUnits = Math.max(0, quantityBase) + Math.max(0, bonusBase);
 
         jdbcTemplate.update("DELETE FROM medicine_inventory_details WHERE id = ?", detailId);
         jdbcTemplate.update(
@@ -759,22 +897,34 @@ public class AdminController {
                        ROUND(COALESCE(b.bill_total, 0), 2) AS ocr_total,
                        ROUND(COALESCE(SUM(
                          CASE
-                           WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.quantity_added, 0) + COALESCE(mid.bonus_qty, 0))
+                           WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0) + COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0))
                            WHEN COALESCE(mid.amount, 0) > 0 THEN COALESCE(mid.amount, 0)
                            ELSE COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
-                             * COALESCE(mid.quantity_added, 0)
+                             * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                              * (1 + (COALESCE(mid.gst, 0) / 100.0))
                              * (1 - (COALESCE(mid.dis1, 0) / 100.0))
                              * (1 - (COALESCE(mid.dis2, 0) / 100.0))
-                           END
+                         END
                          ), 0), 2) AS calculated_total,
+                       ROUND(COALESCE(SUM(
+                         COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
+                         * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
+                         * (1 - ((1 - (COALESCE(mid.dis1, 0) / 100.0)) * (1 - (COALESCE(mid.dis2, 0) / 100.0))))
+                       ), 0), 2) AS calculated_discount_total,
+                       ROUND(COALESCE(SUM(
+                         COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
+                         * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
+                         * (1 - (COALESCE(mid.dis1, 0) / 100.0))
+                         * (1 - (COALESCE(mid.dis2, 0) / 100.0))
+                         * (COALESCE(mid.gst, 0) / 100.0)
+                       ), 0), 2) AS calculated_gst_total,
                        CASE
                          WHEN ABS(ROUND(COALESCE(b.bill_total, 0), 2) - ROUND(COALESCE(SUM(
                            CASE
-                             WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.quantity_added, 0) + COALESCE(mid.bonus_qty, 0))
+                             WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0) + COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0))
                              WHEN COALESCE(mid.amount, 0) > 0 THEN COALESCE(mid.amount, 0)
                              ELSE COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
-                               * COALESCE(mid.quantity_added, 0)
+                               * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                * (1 + (COALESCE(mid.gst, 0) / 100.0))
                                * (1 - (COALESCE(mid.dis1, 0) / 100.0))
                                * (1 - (COALESCE(mid.dis2, 0) / 100.0))
@@ -785,7 +935,7 @@ public class AdminController {
                        b.file_name,
                        b.created_at,
                        COUNT(mid.id) AS mapped_rows,
-                       COALESCE(SUM(mid.quantity_added), 0) AS total_units
+                       COALESCE(SUM(COALESCE(mid.purchase_qty_base, 0) + COALESCE(mid.bonus_qty_base, 0)), 0) AS total_units
                 FROM agency_bills b
                 LEFT JOIN medicine_inventory_details mid ON mid.agency_bill_id = b.id
                 WHERE b.agency_id = ?
@@ -814,22 +964,34 @@ public class AdminController {
                        ROUND(COALESCE(b.bill_total, 0), 2) AS ocr_total,
                        ROUND(COALESCE(SUM(
                          CASE
-                           WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.quantity_added, 0) + COALESCE(mid.bonus_qty, 0))
+                           WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0) + COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0))
                            WHEN COALESCE(mid.amount, 0) > 0 THEN COALESCE(mid.amount, 0)
                            ELSE COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
-                             * COALESCE(mid.quantity_added, 0)
+                             * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                              * (1 + (COALESCE(mid.gst, 0) / 100.0))
                              * (1 - (COALESCE(mid.dis1, 0) / 100.0))
                              * (1 - (COALESCE(mid.dis2, 0) / 100.0))
                          END
                        ), 0), 2) AS calculated_total,
+                       ROUND(COALESCE(SUM(
+                         COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
+                         * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
+                         * (1 - ((1 - (COALESCE(mid.dis1, 0) / 100.0)) * (1 - (COALESCE(mid.dis2, 0) / 100.0))))
+                       ), 0), 2) AS calculated_discount_total,
+                       ROUND(COALESCE(SUM(
+                         COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
+                         * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
+                         * (1 - (COALESCE(mid.dis1, 0) / 100.0))
+                         * (1 - (COALESCE(mid.dis2, 0) / 100.0))
+                         * (COALESCE(mid.gst, 0) / 100.0)
+                       ), 0), 2) AS calculated_gst_total,
                        CASE
                          WHEN ABS(ROUND(COALESCE(b.bill_total, 0), 2) - ROUND(COALESCE(SUM(
                            CASE
-                             WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.quantity_added, 0) + COALESCE(mid.bonus_qty, 0))
+                             WHEN COALESCE(mid.effective_cost_price, 0) > 0 THEN COALESCE(mid.effective_cost_price, 0) * (COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0) + COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0))
                              WHEN COALESCE(mid.amount, 0) > 0 THEN COALESCE(mid.amount, 0)
                              ELSE COALESCE(NULLIF(mid.rate, 0), mid.mrp, 0)
-                               * COALESCE(mid.quantity_added, 0)
+                               * COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                * (1 + (COALESCE(mid.gst, 0) / 100.0))
                                * (1 - (COALESCE(mid.dis1, 0) / 100.0))
                                * (1 - (COALESCE(mid.dis2, 0) / 100.0))
@@ -862,7 +1024,16 @@ public class AdminController {
                        mid.expiry,
                        mid.qty_fr,
                        mid.quantity_added,
+                       COALESCE(mid.purchase_qty_entered, mid.quantity_added) AS purchase_qty_entered,
+                       COALESCE(mid.purchase_qty_base, 0) AS purchase_qty_base,
                        mid.bonus_qty,
+                       COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0) AS bonus_qty_entered,
+                       COALESCE(mid.bonus_qty_base, 0) AS bonus_qty_base,
+                       COALESCE(mid.sold_qty_base, COALESCE(mid.sold_qty, 0)) AS sold_qty_base,
+                       COALESCE(mid.pack_size, 1) AS pack_size,
+                       COALESCE(mid.base_uom, '') AS base_uom,
+                       COALESCE(mid.pack_uom, '') AS pack_uom,
+                       COALESCE(mid.purchase_uom, '') AS purchase_uom,
                        COALESCE(mid.bonus, '') AS bonus,
                        mid.deal,
                        ROUND(mid.rate, 2) AS rate,
@@ -883,7 +1054,7 @@ public class AdminController {
                                        WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '/') - 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '+') - 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '/') - 1) AS INTEGER)
-                                       ELSE COALESCE(mid.quantity_added, 0)
+                                       ELSE COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                      END) > 0
                                     AND
                                     (CASE
@@ -891,7 +1062,7 @@ public class AdminController {
                                        WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), instr(COALESCE(mid.qty_fr, ''), '/') + 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '+') + 1) AS INTEGER)
                                        WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '/') + 1) AS INTEGER)
-                                       ELSE COALESCE(mid.bonus_qty, 0)
+                                       ELSE COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0)
                                      END) > 0
                                     THEN (
                                       (CASE
@@ -899,21 +1070,21 @@ public class AdminController {
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '/') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '+') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '/') - 1) AS INTEGER)
-                                         ELSE COALESCE(mid.quantity_added, 0)
+                                         ELSE COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                        END) * 1.0 /
                                       ((CASE
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '+') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), 1, instr(COALESCE(mid.qty_fr, ''), '/') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '+') - 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), 1, instr(COALESCE(mid.deal, ''), '/') - 1) AS INTEGER)
-                                         ELSE COALESCE(mid.quantity_added, 0)
+                                         ELSE COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0)
                                        END) +
                                        (CASE
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), instr(COALESCE(mid.qty_fr, ''), '+') + 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.qty_fr, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.qty_fr, ''), instr(COALESCE(mid.qty_fr, ''), '/') + 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '+') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '+') + 1) AS INTEGER)
                                          WHEN instr(COALESCE(mid.deal, ''), '/') > 0 THEN CAST(substr(COALESCE(mid.deal, ''), instr(COALESCE(mid.deal, ''), '/') + 1) AS INTEGER)
-                                         ELSE COALESCE(mid.bonus_qty, 0)
+                                         ELSE COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0)
                                        END))
                                     )
                                   ELSE 1
@@ -921,7 +1092,7 @@ public class AdminController {
                             )
                           END),
                          0
-                       ), 2) AS effective_rate,
+                       ), 4) AS effective_rate,
                        ROUND(mid.mrp, 2) AS mrp,
                        ROUND(mid.amount, 2) AS amount,
                        mid.manufacturer,
@@ -935,13 +1106,41 @@ public class AdminController {
                 """,
                 billId
         );
+        for (Map<String, Object> line : medicines) {
+            int qty = parseQtyPart(line.get("purchase_qty_entered"), line.get("quantity_added"));
+            if (qty <= 0) {
+                qty = parseQtyPart(line.get("qty_fr"), 0);
+            }
+            int bonusQty = parseQtyPart(line.get("bonus_qty_entered"), line.get("bonus_qty"));
+            if (bonusQty <= 0) {
+                bonusQty = parseBonusFromQtyFr(line.get("qty_fr") == null ? "" : String.valueOf(line.get("qty_fr")));
+            }
+            if (bonusQty <= 0) {
+                bonusQty = parseBonusText(line.get("bonus") == null ? "" : String.valueOf(line.get("bonus")));
+            }
+            PricingCheck pricingCheck = computePricingCheck(
+                    asDouble(line.get("rate")),
+                    asDouble(line.get("effective_rate")),
+                    asDouble(line.get("amount")),
+                    qty,
+                    bonusQty
+            );
+            line.put("calculated_total_rate_qty", pricingCheck.calculatedRateTotal());
+            line.put("calculated_total_effective_qty", pricingCheck.calculatedEffectiveTotal());
+            line.put("amount_mismatch", pricingCheck.amountMismatch());
+        }
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("bill", billRows.get(0));
         payload.put("medicines", medicines);
         payload.put("summary", Map.of(
                 "line_items", medicines.size(),
-                "total_units_added", medicines.stream().mapToInt(row -> ((Number) row.getOrDefault("quantity_added", 0)).intValue()).sum()
+                "total_units_added", medicines.stream().mapToInt(row ->
+                        ((Number) row.getOrDefault("purchase_qty_base", 0)).intValue()
+                                + ((Number) row.getOrDefault("bonus_qty_base", 0)).intValue()
+                ).sum(),
+                "calculated_discount_total", asDouble(billRows.get(0).get("calculated_discount_total")),
+                "calculated_gst_total", asDouble(billRows.get(0).get("calculated_gst_total"))
         ));
         return ResponseEntity.ok(payload);
     }
@@ -1090,32 +1289,44 @@ public class AdminController {
         return parseIntFromText(text.substring(split + 1), 0);
     }
 
-    private static int parsePackSize(String pack) {
-        String value = pack == null ? "" : pack.trim().toUpperCase();
-        if (value.isEmpty()) {
-            return 1;
+    private static int parseBonusText(String bonusText) {
+        if (bonusText == null) {
+            return 0;
         }
-        String[] numbers = value.replaceAll("[^0-9]+", " ").trim().split("\\s+");
-        if (numbers.length == 0 || numbers[0].isEmpty()) {
-            return 1;
+        String text = bonusText.trim();
+        if (text.isEmpty()) {
+            return 0;
         }
-        try {
-            if (value.contains("X")) {
-                return Math.max(1, Integer.parseInt(numbers[numbers.length - 1]));
+        int split = splitIndex(text);
+        if (split >= 0 && split + 1 < text.length()) {
+            return parseIntFromText(text.substring(split + 1), 0);
+        }
+        var matcher = NUMBER_TOKEN_PATTERN.matcher(text);
+        int last = 0;
+        while (matcher.find()) {
+            try {
+                last = Math.max(0, (int) Math.round(Double.parseDouble(matcher.group(1))));
+            } catch (NumberFormatException ignored) {
+                // continue scanning tokens
             }
-            return Math.max(1, Integer.parseInt(numbers[0]));
-        } catch (NumberFormatException ignored) {
-            return 1;
         }
+        return last;
+    }
+
+    private static int parsePackSize(String pack) {
+        return InventoryQuantityUtils.parsePackSize(pack);
+    }
+
+    private static String normalizeUomValue(Object value, String fallback) {
+        String text = value == null ? "" : String.valueOf(value).trim().toUpperCase();
+        if (text.isBlank()) {
+            return fallback == null ? "" : fallback.trim().toUpperCase();
+        }
+        return text;
     }
 
     private static int toSmallestUnits(int quantity, String pack) {
-        int safeQty = Math.max(0, quantity);
-        int packSize = parsePackSize(pack);
-        if (safeQty == 0) {
-            return 0;
-        }
-        return safeQty * Math.max(1, packSize);
+        return InventoryQuantityUtils.toBaseUnits(quantity, pack);
     }
 
     private static int valueOrCurrentBooleanInt(Map<String, Object> request, String key, Object currentValue) {
@@ -1136,6 +1347,36 @@ public class AdminController {
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
     }
+
+    private static double asDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value).trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static PricingCheck computePricingCheck(double rate, double effectivePrice, double amount, int qty, int bonusQty) {
+        int safeQty = Math.max(0, qty);
+        int safeBonusQty = Math.max(0, bonusQty);
+        int totalQty = safeQty + safeBonusQty;
+        double roundedAmount = round2(Math.max(0, amount));
+        double rateTotal = totalQty > 0 && rate > 0 ? round2(rate * totalQty) : 0;
+        double effectiveTotal = totalQty > 0 && effectivePrice > 0 ? round2(effectivePrice * totalQty) : 0;
+        boolean hasRate = totalQty > 0 && rate > 0 && amount > 0;
+        boolean hasEffective = totalQty > 0 && effectivePrice > 0 && amount > 0;
+        boolean rateMismatch = hasRate && rateTotal != roundedAmount;
+        boolean effectiveMismatch = hasEffective && effectiveTotal != roundedAmount;
+        return new PricingCheck(rateTotal, effectiveTotal, rateMismatch && effectiveMismatch);
+    }
+
+    private record PricingCheck(double calculatedRateTotal, double calculatedEffectiveTotal, boolean amountMismatch) {}
 
     private long resolveOrCreateMedicine(String name, String brand, String description, String category, double rate, double mrp, int stockToAdd) {
         List<Long> existing = jdbcTemplate.query(

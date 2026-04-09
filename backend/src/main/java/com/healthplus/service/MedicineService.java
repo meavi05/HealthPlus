@@ -6,7 +6,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -280,22 +279,7 @@ public class MedicineService {
     }
 
     private static int parsePackSize(String pack) {
-        String value = pack == null ? "" : pack.trim().toUpperCase(Locale.ROOT);
-        if (value.isBlank()) {
-            return 1;
-        }
-        String[] numbers = value.replaceAll("[^0-9]+", " ").trim().split("\\s+");
-        if (numbers.length == 0 || numbers[0].isBlank()) {
-            return 1;
-        }
-        try {
-            if (value.contains("X")) {
-                return Math.max(1, Integer.parseInt(numbers[numbers.length - 1]));
-            }
-            return Math.max(1, Integer.parseInt(numbers[0]));
-        } catch (Exception ignored) {
-            return 1;
-        }
+        return InventoryQuantityUtils.parsePackSize(pack);
     }
 
     private static String formatPackSplitStock(int stockSmallest, String pack) {

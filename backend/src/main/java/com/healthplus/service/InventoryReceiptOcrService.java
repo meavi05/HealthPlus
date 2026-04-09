@@ -23,6 +23,7 @@ import java.util.Map;
 @Service
 public class InventoryReceiptOcrService {
     private static final String UNKNOWN_PROFILE_DESCRIPTION = "Added from agency receipt OCR ingestion";
+    private static final java.util.regex.Pattern NUMBER_TOKEN_PATTERN = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)");
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -121,26 +122,41 @@ public class InventoryReceiptOcrService {
 
         List<InventoryRow> rows = new ArrayList<>();
         List<String> packMissingRows = new ArrayList<>();
+        List<String> ambiguousPackRows = new ArrayList<>();
         for (int i = 0; i < rowPayload.size(); i++) {
             Map<String, Object> row = rowPayload.get(i);
             String qtyFr = asString(row.get("qty_fr"));
             String bonusText = asString(row.get("bonus"));
             String product = asString(row.get("product"));
             String pack = asString(row.get("pack"));
+            String rowLabel = "#" + (i + 1);
+            if (!product.isBlank()) {
+                rowLabel += " (" + product + ")";
+            }
             if (pack.isBlank()) {
-                String rowLabel = "#" + (i + 1);
-                if (!product.isBlank()) {
-                    rowLabel += " (" + product + ")";
-                }
                 packMissingRows.add(rowLabel);
+            } else {
+                InventoryQuantityUtils.PackInfo packInfo = InventoryQuantityUtils.parsePackInfo(pack);
+                if (packInfo.ambiguous()) {
+                    ambiguousPackRows.add(rowLabel + ": " + packInfo.reason());
+                }
             }
             int quantityAdded = asInt(row.get("quantity_added"));
+            if (quantityAdded <= 0) {
+                quantityAdded = asInt(row.get("purchase_qty_entered"));
+            }
             int bonusQty = asInt(row.get("bonus_qty"));
+            if (bonusQty <= 0) {
+                bonusQty = asInt(row.get("bonus_qty_entered"));
+            }
             if (quantityAdded <= 0) {
                 quantityAdded = ReceiptOcrUtils.parseQtyFr(qtyFr);
             }
             if (bonusQty <= 0) {
                 bonusQty = ReceiptOcrUtils.parseBonusFromQtyFr(qtyFr);
+            }
+            if (bonusQty <= 0) {
+                bonusQty = parseBonusText(bonusText);
             }
             double mrp = asDouble(row.get("mrp"));
             double rate = asDouble(row.get("rate"));
@@ -197,6 +213,12 @@ public class InventoryReceiptOcrService {
         if (!packMissingRows.isEmpty()) {
             throw new IllegalArgumentException("Pack is required. Please add pack for row(s): " + String.join(", ", packMissingRows));
         }
+        if (!ambiguousPackRows.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Pack format is ambiguous for row(s): " + String.join(", ", ambiguousPackRows)
+                            + ". Use explicit values like 1x10 TAB, 100 ML, 60 GM, 1x15 CAP."
+            );
+        }
         rows = rows.stream()
                 .filter(row -> !row.name().isBlank() && row.quantity() > 0 && row.effectiveCostPrice() > 0)
                 .toList();
@@ -227,8 +249,23 @@ public class InventoryReceiptOcrService {
                 paidQty = row.quantity();
             }
             int bonusQty = row.bonusQty();
-            int paidUnits = ReceiptOcrUtils.toSmallestUnits(paidQty, row.pack());
-            int bonusUnits = ReceiptOcrUtils.toSmallestUnits(bonusQty, row.pack());
+            if (bonusQty <= 0) {
+                bonusQty = ReceiptOcrUtils.parseBonusFromQtyFr(row.qtyFr());
+            }
+            if (bonusQty <= 0) {
+                bonusQty = parseBonusText(bonusTextValue(row));
+            }
+            InventoryQuantityUtils.PackInfo packInfo = InventoryQuantityUtils.parsePackInfo(row.pack());
+            if (packInfo.ambiguous()) {
+                throw new IllegalArgumentException(
+                        "Pack format is ambiguous for \"" + row.pack() + "\" (" + row.name() + "). "
+                                + packInfo.reason() + ". Use explicit values like 1x10 TAB, 100 ML, 60 GM."
+                );
+            }
+            int packSize = packInfo.packSize();
+            int paidBase = InventoryQuantityUtils.toBaseUnits(paidQty, packSize);
+            int bonusBase = InventoryQuantityUtils.toBaseUnits(bonusQty, packSize);
+            PricingCheck pricingCheck = computePricingCheck(row.rate(), row.effectiveCostPrice(), row.amount(), paidQty, bonusQty);
             String profileCacheKey = (row.name() + "|" + row.brand()).toLowerCase(Locale.ROOT);
             MedicineProfileResolution profileResolution = profileCache.computeIfAbsent(profileCacheKey, key -> resolveMedicineProfile(row, processingStats));
             if (profileResolution == null || profileResolution.profile() == null) {
@@ -254,12 +291,27 @@ public class InventoryReceiptOcrService {
             outcome.put("agency_bill_id", billId);
             outcome.put("name", row.name());
             outcome.put("brand", row.brand());
-            outcome.put("stock_added", paidUnits + bonusUnits);
+            outcome.put("pack", row.pack());
+            outcome.put("qty_fr", row.qtyFr());
+            outcome.put("pack_size", packSize);
+            outcome.put("base_uom", packInfo.baseUom());
+            outcome.put("pack_uom", packInfo.packUom());
+            outcome.put("purchase_uom", packInfo.purchaseUom());
+            outcome.put("quantity_added", paidQty);
+            outcome.put("purchase_qty_entered", paidQty);
+            outcome.put("purchase_qty_base", paidBase);
             outcome.put("bonus", bonusTextValue);
-            outcome.put("bonus_qty", bonusUnits);
-            outcome.put("effective_unit_rate", row.effectiveCostPrice());
-            outcome.put("effective_unit_price", row.effectiveCostPrice());
-            outcome.put("effective_cost_price", row.effectiveCostPrice());
+            outcome.put("bonus_qty", bonusQty);
+            outcome.put("bonus_qty_entered", bonusQty);
+            outcome.put("bonus_qty_base", bonusBase);
+            outcome.put("sold_qty_base", 0);
+            outcome.put("stock_added", paidBase + bonusBase);
+            outcome.put("calculated_total_rate_qty", pricingCheck.calculatedRateTotal());
+            outcome.put("calculated_total_effective_qty", pricingCheck.calculatedEffectiveTotal());
+            outcome.put("amount_mismatch", pricingCheck.amountMismatch());
+            outcome.put("effective_unit_rate", roundEffectivePrice(row.effectiveCostPrice()));
+            outcome.put("effective_unit_price", roundEffectivePrice(row.effectiveCostPrice()));
+            outcome.put("effective_cost_price", roundEffectivePrice(row.effectiveCostPrice()));
             outcome.put("deal", row.deal());
             outcome.put("batch", row.batch());
             outcome.put("expiry", row.expiry());
@@ -470,7 +522,7 @@ public class InventoryReceiptOcrService {
                     WHERE id = ?
                     """,
                     stockUnitsToAdd,
-                    roundCurrency(row.effectiveCostPrice()),
+                    roundEffectivePrice(row.effectiveCostPrice()),
                     resolvedMrp,
                     resolvedMrp,
                     profile.category(),
@@ -491,7 +543,7 @@ public class InventoryReceiptOcrService {
             );
             ps.setString(1, row.name());
             ps.setString(2, profile.description());
-            ps.setDouble(3, roundCurrency(row.effectiveCostPrice()));
+            ps.setDouble(3, roundEffectivePrice(row.effectiveCostPrice()));
             int paidQty = row.quantityAdded();
             if (paidQty <= 0) {
                 paidQty = row.quantity();
@@ -529,17 +581,30 @@ public class InventoryReceiptOcrService {
             paidQty = row.quantity();
         }
         int bonusQty = row.bonusQty();
-        int paidUnits = ReceiptOcrUtils.toSmallestUnits(paidQty, row.pack());
-        int bonusUnits = ReceiptOcrUtils.toSmallestUnits(bonusQty, row.pack());
+        InventoryQuantityUtils.PackInfo packInfo = InventoryQuantityUtils.parsePackInfo(row.pack());
+        if (packInfo.ambiguous()) {
+            throw new IllegalArgumentException(
+                    "Pack format is ambiguous for \"" + row.pack() + "\" (" + row.name() + "). "
+                            + packInfo.reason() + ". Use explicit values like 1x10 TAB, 100 ML, 60 GM."
+            );
+        }
+        int packSize = packInfo.packSize();
+        int paidBase = InventoryQuantityUtils.toBaseUnits(paidQty, packSize);
+        int bonusBase = InventoryQuantityUtils.toBaseUnits(bonusQty, packSize);
+        String baseUom = packInfo.baseUom();
+        String packUom = packInfo.packUom();
+        String purchaseUom = packInfo.purchaseUom();
         String bonusTextValue = bonusTextValue(row);
         String resolvedName = row.name();
         String resolvedBrand = row.brand().isBlank() ? "Unspecified" : row.brand();
         jdbcTemplate.update(
                 """
                 INSERT INTO medicine_inventory_details
-                (medicine_id, medicine_name, brand, agency_bill_id, hsn, manufacturer, pack, qty_fr, batch, expiry, mrp, rate, gst, dis1, dis2, amount, deal, effective_cost_price, quantity_added, bonus_qty, bonus, source,
+                (medicine_id, medicine_name, brand, agency_bill_id, hsn, manufacturer, pack, pack_size, base_uom, pack_uom, purchase_uom, qty_fr, batch, expiry, mrp, rate, gst, dis1, dis2, amount, deal, effective_cost_price,
+                 quantity_added, purchase_qty_entered, purchase_qty_base,
+                 bonus_qty, bonus_qty_entered, bonus_qty_base, sold_qty_base, sold_qty, bonus, source,
                  medicine_category, medicine_type, medicine_description, medicine_uses, medicine_doses, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ocr', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'ocr', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
                 medicineId,
                 resolvedName,
@@ -548,6 +613,10 @@ public class InventoryReceiptOcrService {
                 row.hsn(),
                 row.manufacturer(),
                 row.pack(),
+                packSize,
+                baseUom,
+                packUom,
+                purchaseUom,
                 row.qtyFr(),
                 row.batch(),
                 row.expiry(),
@@ -558,9 +627,13 @@ public class InventoryReceiptOcrService {
                 roundCurrency(row.dis2()),
                 roundCurrency(row.amount()),
                 row.deal(),
-                roundCurrency(row.effectiveCostPrice()),
-                paidUnits,
-                bonusUnits,
+                roundEffectivePrice(row.effectiveCostPrice()),
+                paidQty,
+                paidQty,
+                paidBase,
+                bonusQty,
+                bonusQty,
+                bonusBase,
                 bonusTextValue,
                 profile.category(),
                 profile.type(),
@@ -914,7 +987,7 @@ public class InventoryReceiptOcrService {
         }
 
         List<Map<String, Object>> detailRows = jdbcTemplate.queryForList(
-                "SELECT medicine_id, COALESCE(quantity_added, 0) AS quantity_added, COALESCE(bonus_qty, 0) AS bonus_qty FROM medicine_inventory_details WHERE agency_bill_id = ?",
+                "SELECT medicine_id, pack, COALESCE(pack_size, 0) AS pack_size, COALESCE(quantity_added, 0) AS quantity_added, COALESCE(purchase_qty_base, 0) AS purchase_qty_base, COALESCE(bonus_qty, 0) AS bonus_qty, COALESCE(bonus_qty_base, 0) AS bonus_qty_base, COALESCE(sold_qty, 0) AS sold_qty, COALESCE(sold_qty_base, 0) AS sold_qty_base FROM medicine_inventory_details WHERE agency_bill_id = ?",
                 billId
         );
         Map<Long, Integer> unitsByMedicine = new LinkedHashMap<>();
@@ -922,9 +995,23 @@ public class InventoryReceiptOcrService {
             if (!(row.get("medicine_id") instanceof Number medId)) {
                 continue;
             }
-            int qty = row.get("quantity_added") instanceof Number qtyNum ? qtyNum.intValue() : 0;
-            int bonus = row.get("bonus_qty") instanceof Number bonusNum ? bonusNum.intValue() : 0;
-            int totalUnits = Math.max(0, qty) + Math.max(0, bonus);
+            String pack = row.get("pack") == null ? "" : String.valueOf(row.get("pack"));
+            int packSize = row.get("pack_size") instanceof Number num && num.intValue() > 0 ? num.intValue() : InventoryQuantityUtils.parsePackSize(pack);
+            int qtyEntered = row.get("quantity_added") instanceof Number qtyNum ? qtyNum.intValue() : 0;
+            int qtyBase = row.get("purchase_qty_base") instanceof Number qtyNum ? qtyNum.intValue() : 0;
+            if (qtyBase <= 0) {
+                qtyBase = InventoryQuantityUtils.toBaseUnits(qtyEntered, packSize);
+            }
+            int bonusEntered = row.get("bonus_qty") instanceof Number bonusNum ? bonusNum.intValue() : 0;
+            int bonusBase = row.get("bonus_qty_base") instanceof Number bonusBaseNum ? bonusBaseNum.intValue() : 0;
+            if (bonusBase <= 0) {
+                bonusBase = InventoryQuantityUtils.toBaseUnits(bonusEntered, packSize);
+            }
+            int soldBase = row.get("sold_qty_base") instanceof Number soldNum ? soldNum.intValue() : 0;
+            if (soldBase <= 0) {
+                soldBase = row.get("sold_qty") instanceof Number soldRawNum ? soldRawNum.intValue() : 0;
+            }
+            int totalUnits = Math.max(0, qtyBase) + Math.max(0, bonusBase) - Math.max(0, soldBase);
             if (totalUnits <= 0) {
                 continue;
             }
@@ -1010,6 +1097,26 @@ public class InventoryReceiptOcrService {
         return Math.round(value * 100.0) / 100.0;
     }
 
+    private static double roundEffectivePrice(double value) {
+        return Math.round(value * 10000.0) / 10000.0;
+    }
+
+    private static PricingCheck computePricingCheck(double rate, double effectivePrice, double amount, int qty, int bonusQty) {
+        int safeQty = Math.max(0, qty);
+        int safeBonusQty = Math.max(0, bonusQty);
+        int totalQty = safeQty + safeBonusQty;
+        double roundedAmount = roundCurrency(Math.max(0, amount));
+        double rateTotal = totalQty > 0 && rate > 0 ? roundCurrency(rate * totalQty) : 0;
+        double effectiveTotal = totalQty > 0 && effectivePrice > 0 ? roundCurrency(effectivePrice * totalQty) : 0;
+        boolean hasRate = totalQty > 0 && rate > 0 && amount > 0;
+        boolean hasEffective = totalQty > 0 && effectivePrice > 0 && amount > 0;
+        boolean rateMismatch = hasRate && rateTotal != roundedAmount;
+        boolean effectiveMismatch = hasEffective && effectiveTotal != roundedAmount;
+        return new PricingCheck(rateTotal, effectiveTotal, rateMismatch && effectiveMismatch);
+    }
+
+    private record PricingCheck(double calculatedRateTotal, double calculatedEffectiveTotal, boolean amountMismatch) {}
+
     private static Map<String, Object> step(String stage, String status, String message, Map<String, Object> details) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("stage", stage);
@@ -1023,18 +1130,52 @@ public class InventoryReceiptOcrService {
         Map<String, Object> payload = new LinkedHashMap<>();
         String bonusTextValue = bonusTextValue(row);
         int bonusQty = row.bonusQty();
+        if (bonusQty <= 0) {
+            bonusQty = ReceiptOcrUtils.parseBonusFromQtyFr(row.qtyFr());
+        }
+        if (bonusQty <= 0) {
+            bonusQty = parseBonusText(bonusTextValue);
+        }
         int paidQty = row.quantityAdded();
         if (paidQty <= 0) {
             paidQty = row.quantity();
         }
+        InventoryQuantityUtils.PackInfo packInfo = InventoryQuantityUtils.parsePackInfo(row.pack());
+        int packSize = packInfo.packSize();
+        int paidBase = InventoryQuantityUtils.toBaseUnits(paidQty, packSize);
+        int bonusBase = InventoryQuantityUtils.toBaseUnits(bonusQty, packSize);
+        PricingCheck pricingCheck = computePricingCheck(row.rate(), row.effectiveCostPrice(), row.amount(), paidQty, bonusQty);
         payload.put("product", row.product());
         payload.put("hsn", row.hsn());
         payload.put("mfr", row.manufacturer());
         payload.put("pack", row.pack());
+        payload.put("pack_size", packSize);
+        payload.put("base_uom", packInfo.baseUom());
+        payload.put("pack_uom", packInfo.packUom());
+        payload.put("purchase_uom", packInfo.purchaseUom());
+        List<String> ambiguityFlags = new ArrayList<>();
+        if (packInfo.ambiguous()) {
+            ambiguityFlags.add("pack_ambiguous");
+        }
+        if (pricingCheck.amountMismatch()) {
+            ambiguityFlags.add("amount_mismatch");
+        }
+        if (!ambiguityFlags.isEmpty()) {
+            payload.put("ambiguity_flags", ambiguityFlags);
+        }
         payload.put("qty_fr", row.qtyFr());
         payload.put("bonus", bonusTextValue);
         payload.put("bonus_qty", bonusQty);
+        payload.put("bonus_qty_entered", bonusQty);
+        payload.put("bonus_qty_base", bonusBase);
         payload.put("quantity_added", paidQty);
+        payload.put("purchase_qty_entered", paidQty);
+        payload.put("purchase_qty_base", paidBase);
+        payload.put("sold_qty_base", 0);
+        payload.put("stock_added", paidBase + bonusBase);
+        payload.put("calculated_total_rate_qty", pricingCheck.calculatedRateTotal());
+        payload.put("calculated_total_effective_qty", pricingCheck.calculatedEffectiveTotal());
+        payload.put("amount_mismatch", pricingCheck.amountMismatch());
         payload.put("batch", row.batch());
         payload.put("exp", row.expiry());
         payload.put("mrp", roundCurrency(row.mrp()));
@@ -1044,7 +1185,7 @@ public class InventoryReceiptOcrService {
         payload.put("dis2", roundCurrency(row.dis2()));
         payload.put("amount", roundCurrency(row.amount()));
         payload.put("deal", row.deal());
-        payload.put("effective_cost_price", roundCurrency(row.effectiveCostPrice()));
+        payload.put("effective_cost_price", roundEffectivePrice(row.effectiveCostPrice()));
         payload.put("medicine_category", row.medicineCategory());
         payload.put("medicine_type", row.medicineType());
         payload.put("medicine_description", row.medicineDescription());
@@ -1109,6 +1250,36 @@ public class InventoryReceiptOcrService {
         } catch (Exception ignored) {
             return 0;
         }
+    }
+
+    private static int parseBonusText(String bonusText) {
+        if (bonusText == null) {
+            return 0;
+        }
+        String text = bonusText.trim();
+        if (text.isBlank()) {
+            return 0;
+        }
+        int plus = text.indexOf('+');
+        int slash = text.indexOf('/');
+        int split = plus < 0 ? slash : (slash < 0 ? plus : Math.min(plus, slash));
+        if (split >= 0 && split + 1 < text.length()) {
+            try {
+                return Math.max(0, (int) Math.round(Double.parseDouble(text.substring(split + 1).replaceAll("[^0-9.]", ""))));
+            } catch (Exception ignored) {
+                // fall through
+            }
+        }
+        var matcher = NUMBER_TOKEN_PATTERN.matcher(text);
+        int last = 0;
+        while (matcher.find()) {
+            try {
+                last = Math.max(0, (int) Math.round(Double.parseDouble(matcher.group(1))));
+            } catch (Exception ignored) {
+                // continue scanning
+            }
+        }
+        return last;
     }
 
     private static String bonusTextValue(InventoryRow row) {

@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: ${V29_DB_URL:jdbc:sqlite:/Users/avinashsingh/Downloads/health-plus-store/health_plus_store_v29.db}
+    driver-class-name: org.sqlite.JDBC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration_v29
+    table: flyway_schema_history_v29

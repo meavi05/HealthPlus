@@ -231,6 +231,35 @@ export default function SalesTab() {
     selectedLots?: SalesLotRow[]
   ) => resolvePackSizeFromMetadata(item, selectedMedicine, selectedLots) == null && toSafeInt(Number(item.pack_size_override || 0)) <= 0;
 
+  const normalizeUomLabel = (value: unknown, fallback: string) => {
+    const text = asNonBlankText(value).toUpperCase();
+    if (text) return text;
+    return fallback;
+  };
+
+  const resolveUomLabels = (
+    item: Pick<SaleFormItem, 'medicine_id' | 'lots' | 'pack_size_override'>,
+    selectedMedicine?: SalesMedicineRow,
+    selectedLots?: SalesLotRow[]
+  ) => {
+    const medicine = selectedMedicine ?? medicineRows.find((row) => row.id === item.medicine_id);
+    const lots = selectedLots ?? item.lots;
+    const packSize = resolvePackSize(item, selectedMedicine, selectedLots);
+    const primaryLot = lots[0];
+    const packUom = normalizeUomLabel(
+      primaryLot?.pack_uom ?? medicine?.stock_pack_uom,
+      packSize > 1 ? 'STRIP' : 'UNIT'
+    );
+    const baseUom = normalizeUomLabel(
+      primaryLot?.base_uom ?? medicine?.stock_base_uom,
+      packSize > 1 ? 'TAB' : 'UNIT'
+    );
+    return {
+      packUom,
+      baseUom,
+    };
+  };
+
   const splitQuantity = (quantity: number, packSize: number) => {
     const total = toSafeInt(quantity);
     if (packSize <= 1) {
@@ -466,11 +495,11 @@ export default function SalesTab() {
     }
     for (const item of saleItems) {
       if (isPackSizeMissing(item)) {
-        setError(`Pack size missing for "${item.medicine_name || 'selected medicine'}". Enter pack size to calculate tablet price.`);
+        setError(`Pack size missing for "${item.medicine_name || 'selected medicine'}". Enter pack size to calculate base-unit price.`);
         return;
       }
       if (Number(item.strip_price || 0) <= 0) {
-        setError(`Strip price should be greater than 0 for "${item.medicine_name || 'selected medicine'}".`);
+        setError(`Pack price should be greater than 0 for "${item.medicine_name || 'selected medicine'}".`);
         return;
       }
     }
@@ -777,6 +806,9 @@ export default function SalesTab() {
               const rowPackFromMetadata = resolvePackSizeFromMetadata(item);
               const rowPackNeedsInput = rowPackFromMetadata == null;
               const rowPackMissing = rowPackNeedsInput && toSafeInt(Number(item.pack_size_override || 0)) <= 0;
+              const rowUoms = resolveUomLabels(item);
+              const packQtyLabel = rowPackSize > 1 ? rowUoms.packUom : 'PACK';
+              const baseQtyLabel = rowUoms.baseUom;
               return (
               <div
                 key={item.key}
@@ -807,7 +839,7 @@ export default function SalesTab() {
                     </select>
                   </label>
 
-                  <label className="text-[11px] text-slate-600">Strips
+                  <label className="text-[11px] text-slate-600">{packQtyLabel}
                     <input
                       type="number"
                       value={item.strips}
@@ -817,7 +849,7 @@ export default function SalesTab() {
                     />
                   </label>
 
-                  <label className="text-[11px] text-slate-600">Units
+                  <label className="text-[11px] text-slate-600">{baseQtyLabel}
                     <input
                       type="number"
                       value={item.units}
@@ -872,7 +904,7 @@ export default function SalesTab() {
                     </select>
                   </label>
 
-                  <label className="text-[11px] text-slate-600">Strip ₹
+                  <label className="text-[11px] text-slate-600">{packQtyLabel} ₹
                     <input
                       type="number"
                       value={item.strip_price}

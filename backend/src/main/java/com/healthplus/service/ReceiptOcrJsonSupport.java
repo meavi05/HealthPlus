@@ -44,7 +44,6 @@ final class ReceiptOcrJsonSupport {
             int quantityAdded = ReceiptOcrUtils.parseQtyFr(qtyFr);
             int bonusQty = ReceiptOcrUtils.parseBonusFromQtyFr(qtyFr);
 
-            if (effectiveCostPrice <= 0) {
                 effectiveCostPrice = ReceiptOcrUtils.computeEffectiveCostPrice(
                         rate,
                         mrp,
@@ -57,7 +56,6 @@ final class ReceiptOcrJsonSupport {
                         quantityAdded,
                         bonusQty
                 );
-            }
             InventoryRow row = new InventoryRow(product, hsn, mfr, pack, qtyFr, bonusText, quantityAdded, bonusQty, batch, exp, mrp, rate, gst, dis1, dis2, amount, deal, effectiveCostPrice,
                     medicineCategory, medicineType, medicineDescription, medicineUses, medicineDoses);
             if (row.name().isBlank() || row.quantity() <= 0 || !row.hasPricingEvidence()) {

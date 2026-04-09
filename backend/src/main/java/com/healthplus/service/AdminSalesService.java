@@ -17,12 +17,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class AdminSalesService {
-    private static final Pattern PACK_NUMBER_PATTERN = Pattern.compile("(\\d+)");
     private final JdbcTemplate jdbcTemplate;
 
     public AdminSalesService(JdbcTemplate jdbcTemplate) {
@@ -304,7 +301,21 @@ public class AdminSalesService {
                          WHERE mid.medicine_id = m.id
                          ORDER BY mid.id DESC
                          LIMIT 1
-                       ), '') AS pack
+                       ), '') AS pack,
+                       COALESCE((
+                         SELECT mid.base_uom
+                         FROM medicine_inventory_details mid
+                         WHERE mid.medicine_id = m.id
+                         ORDER BY mid.id DESC
+                         LIMIT 1
+                       ), '') AS base_uom,
+                       COALESCE((
+                         SELECT mid.pack_uom
+                         FROM medicine_inventory_details mid
+                         WHERE mid.medicine_id = m.id
+                         ORDER BY mid.id DESC
+                         LIMIT 1
+                       ), '') AS pack_uom
                 FROM medicines m
                 WHERE COALESCE(m.stock, 0) > 0
                   AND (? = ''
@@ -325,10 +336,14 @@ public class AdminSalesService {
             String pack = asString(medicine.get("pack"));
             int packSize = parsePackSize(pack);
             List<Map<String, Object>> lots = listMedicineLots(medicineId);
+            String baseUom = normalizeUom(asString(medicine.get("base_uom")), InventoryQuantityUtils.baseUomFromPackSize(packSize));
+            String packUom = normalizeUom(asString(medicine.get("pack_uom")), InventoryQuantityUtils.packUomFromPackSize(packSize));
             Map<String, Object> payload = new LinkedHashMap<>(medicine);
             payload.put("stock_smallest", stockSmallest);
             payload.put("stock_pack_size", packSize);
-            payload.put("stock_display", formatPackSplitStock(stockSmallest, packSize));
+            payload.put("stock_base_uom", baseUom);
+            payload.put("stock_pack_uom", packUom);
+            payload.put("stock_display", formatPackSplitStock(stockSmallest, packSize, packUom, baseUom));
             payload.put("available_lots", lots.size());
             int totalLotAvailable = lots.stream()
                     .mapToInt(lot -> ((Number) lot.getOrDefault("available_qty", 0)).intValue())
@@ -336,6 +351,8 @@ public class AdminSalesService {
             payload.put("lot_available_qty", totalLotAvailable);
             if (!lots.isEmpty()) {
                 Map<String, Object> nearest = lots.get(0);
+                payload.put("stock_base_uom", normalizeUom(asString(nearest.get("base_uom")), baseUom));
+                payload.put("stock_pack_uom", normalizeUom(asString(nearest.get("pack_uom")), packUom));
                 payload.put("nearest_expiry", nearest.get("expiry"));
                 payload.put("near_expiry", nearest.get("near_expiry"));
                 payload.put("near_expiry_days", nearest.get("near_expiry_days"));
@@ -360,13 +377,21 @@ public class AdminSalesService {
                        mid.batch,
                        mid.expiry,
                        mid.pack,
+                       COALESCE(mid.pack_size, 1) AS pack_size,
+                       COALESCE(mid.base_uom, '') AS base_uom,
+                       COALESCE(mid.pack_uom, '') AS pack_uom,
+                       COALESCE(mid.purchase_uom, '') AS purchase_uom,
                        mid.qty_fr,
                        ROUND(COALESCE(mid.mrp, 0), 2) AS mrp,
                        ROUND(COALESCE(mid.rate, 0), 2) AS rate,
-                       ROUND(COALESCE(mid.effective_cost_price, 0), 2) AS effective_cost_price,
+                       ROUND(COALESCE(mid.effective_cost_price, 0), 4) AS effective_cost_price,
                        COALESCE(mid.quantity_added, 0) AS quantity_added,
                        COALESCE(mid.bonus_qty, 0) AS bonus_qty,
-                       COALESCE(mid.sold_qty, 0) AS sold_qty
+                       COALESCE(mid.purchase_qty_entered, mid.quantity_added, 0) AS purchase_qty_entered,
+                       COALESCE(mid.purchase_qty_base, 0) AS purchase_qty_base,
+                       COALESCE(mid.bonus_qty_entered, mid.bonus_qty, 0) AS bonus_qty_entered,
+                       COALESCE(mid.bonus_qty_base, 0) AS bonus_qty_base,
+                       COALESCE(mid.sold_qty_base, COALESCE(mid.sold_qty, 0)) AS sold_qty_base
                 FROM medicine_inventory_details mid
                 WHERE mid.medicine_id = ?
                 ORDER BY mid.id DESC
@@ -380,17 +405,35 @@ public class AdminSalesService {
         List<Map<String, Object>> payload = new ArrayList<>();
         for (Map<String, Object> lot : lots) {
             LocalDate expiryDate = parseExpiryToDate(asString(lot.get("expiry")));
-            int packSize = parsePackSize(asString(lot.get("pack")));
+            int packSize = Math.max(1, asInt(lot.get("pack_size")));
+            InventoryQuantityUtils.PackInfo parsedPack = InventoryQuantityUtils.parsePackInfo(asString(lot.get("pack")));
+            if (packSize <= 1) {
+                packSize = parsedPack.packSize();
+            }
             if (packSize <= 1 && fallbackPackSize > 1) {
                 packSize = fallbackPackSize;
             }
-            int quantityAddedRaw = Math.max(0, asInt(lot.get("quantity_added")));
-            int bonusQtyRaw = Math.max(0, asInt(lot.get("bonus_qty")));
-            String qtyFr = asString(lot.get("qty_fr"));
-            int addedUnits = normalizeAddedQtyToUnits(quantityAddedRaw, bonusQtyRaw, qtyFr, Math.max(1, packSize));
-            int soldQtyRaw = Math.max(0, asInt(lot.get("sold_qty")));
-            boolean legacyStripRow = isLegacyStripBasedRow(quantityAddedRaw, bonusQtyRaw, qtyFr, Math.max(1, packSize));
-            int soldQtyUnits = normalizeSoldQtyToUnits(addedUnits, soldQtyRaw, Math.max(1, packSize), legacyStripRow);
+            String baseUom = normalizeUom(asString(lot.get("base_uom")), parsedPack.baseUom());
+            if (baseUom.isBlank()) {
+                baseUom = InventoryQuantityUtils.baseUomFromPackSize(packSize);
+            }
+            String packUom = normalizeUom(asString(lot.get("pack_uom")), parsedPack.packUom());
+            if (packUom.isBlank()) {
+                packUom = InventoryQuantityUtils.packUomFromPackSize(packSize);
+            }
+            String purchaseUom = normalizeUom(asString(lot.get("purchase_uom")), packUom);
+            int purchaseQtyEntered = Math.max(0, asInt(lot.get("purchase_qty_entered")));
+            int bonusQtyEntered = Math.max(0, asInt(lot.get("bonus_qty_entered")));
+            int purchaseQtyBase = Math.max(0, asInt(lot.get("purchase_qty_base")));
+            if (purchaseQtyBase <= 0) {
+                purchaseQtyBase = InventoryQuantityUtils.toBaseUnits(purchaseQtyEntered, packSize);
+            }
+            int bonusQtyBase = Math.max(0, asInt(lot.get("bonus_qty_base")));
+            if (bonusQtyBase <= 0) {
+                bonusQtyBase = InventoryQuantityUtils.toBaseUnits(bonusQtyEntered, packSize);
+            }
+            int addedUnits = purchaseQtyBase + bonusQtyBase;
+            int soldQtyUnits = Math.max(0, Math.min(addedUnits, asInt(lot.get("sold_qty_base"))));
             int availableQty = Math.max(0, addedUnits - soldQtyUnits);
             if (availableQty <= 0) {
                 continue;
@@ -403,9 +446,16 @@ public class AdminSalesService {
             }
             Map<String, Object> row = new LinkedHashMap<>(lot);
             row.put("pack_size", packSize);
+            row.put("base_uom", baseUom);
+            row.put("pack_uom", packUom);
+            row.put("purchase_uom", purchaseUom);
+            row.put("purchase_qty_base", purchaseQtyBase);
+            row.put("bonus_qty_base", bonusQtyBase);
+            row.put("sold_qty_base", soldQtyUnits);
             row.put("sold_qty_units", soldQtyUnits);
             row.put("available_qty", availableQty);
-            row.put("available_display", formatPackSplitStock(availableQty, packSize));
+            row.put("available_qty_base", availableQty);
+            row.put("available_display", formatPackSplitStock(availableQty, packSize, packUom, baseUom));
             row.put("near_expiry", nearExpiry);
             row.put("near_expiry_days", nearExpiryDays);
             payload.add(row);
@@ -632,22 +682,26 @@ public class AdminSalesService {
     }
 
     private int resolvePackSizeForSale(Long medicineId) {
-        List<String> packs = jdbcTemplate.query(
+        List<Map<String, Object>> packs = jdbcTemplate.queryForList(
                 """
-                SELECT COALESCE(mid.pack, '') AS pack
+                SELECT COALESCE(mid.pack_size, 0) AS pack_size,
+                       COALESCE(mid.pack, '') AS pack
                 FROM medicine_inventory_details mid
                 WHERE mid.medicine_id = ?
-                  AND trim(COALESCE(mid.pack, '')) <> ''
                 ORDER BY mid.id DESC
                 LIMIT 1
                 """,
-                (rs, rowNum) -> asString(rs.getString("pack")),
                 medicineId
         );
         if (packs.isEmpty()) {
             return 1;
         }
-        return parsePackSize(packs.get(0));
+        Map<String, Object> row = packs.get(0);
+        int packSize = asInt(row.get("pack_size"));
+        if (packSize > 0) {
+            return packSize;
+        }
+        return parsePackSize(asString(row.get("pack")));
     }
 
     private String generateNextInvoiceNo() {
@@ -713,9 +767,11 @@ public class AdminSalesService {
                     take
             ));
             int existingSoldUnits = Math.max(0, asInt(lot.get("sold_qty_units")));
+            int nextSoldBase = existingSoldUnits + take;
             jdbcTemplate.update(
-                    "UPDATE medicine_inventory_details SET sold_qty = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    existingSoldUnits + take,
+                    "UPDATE medicine_inventory_details SET sold_qty_base = ?, sold_qty = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    nextSoldBase,
+                    nextSoldBase,
                     inventoryDetailId
             );
             remaining -= take;
@@ -731,86 +787,6 @@ public class AdminSalesService {
                 medicineId
         );
         return allocations;
-    }
-
-    private static int normalizeSoldQtyToUnits(int totalAddedUnits, int soldQtyRaw, int packSize, boolean legacyStripRow) {
-        int safePackSize = Math.max(1, packSize);
-        int safeAddedUnits = Math.max(0, totalAddedUnits);
-        int safeSoldRaw = Math.max(0, soldQtyRaw);
-        if (safeSoldRaw == 0) {
-            return 0;
-        }
-        if (legacyStripRow && safePackSize > 1) {
-            int soldUnits = safeSoldRaw * safePackSize;
-            return Math.max(0, Math.min(safeAddedUnits, soldUnits));
-        }
-        return Math.max(0, Math.min(safeAddedUnits, safeSoldRaw));
-    }
-
-    private static int normalizeAddedQtyToUnits(int quantityAddedRaw, int bonusQtyRaw, String qtyFr, int packSize) {
-        int safePackSize = Math.max(1, packSize);
-        int safeQty = Math.max(0, quantityAddedRaw);
-        int safeBonus = Math.max(0, bonusQtyRaw);
-        if (isLegacyStripBasedRow(safeQty, safeBonus, qtyFr, safePackSize)) {
-            return (safeQty + safeBonus) * safePackSize;
-        }
-        return safeQty + safeBonus;
-    }
-
-    private static boolean isLegacyStripBasedRow(int quantityAddedRaw, int bonusQtyRaw, String qtyFr, int packSize) {
-        int safePackSize = Math.max(1, packSize);
-        if (safePackSize <= 1) {
-            return false;
-        }
-        int paidFromQtyFr = parseQtyFr(qtyFr);
-        int bonusFromQtyFr = parseBonusFromQtyFr(qtyFr);
-        if (paidFromQtyFr > 0 && quantityAddedRaw == paidFromQtyFr) {
-            return true;
-        }
-        if (bonusFromQtyFr > 0 && bonusQtyRaw == bonusFromQtyFr) {
-            return true;
-        }
-        return false;
-    }
-
-    private static int parseQtyFr(String value) {
-        if (value == null || value.isBlank()) {
-            return 0;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        String primary = normalized;
-        if (normalized.contains("+")) {
-            primary = normalized.substring(0, normalized.indexOf('+'));
-        } else if (normalized.contains("/")) {
-            primary = normalized.substring(0, normalized.indexOf('/'));
-        }
-        return parseIntegerToken(primary);
-    }
-
-    private static int parseBonusFromQtyFr(String value) {
-        if (value == null || value.isBlank()) {
-            return 0;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        String bonusPart = "";
-        if (normalized.contains("+")) {
-            bonusPart = normalized.substring(normalized.indexOf('+') + 1);
-        } else if (normalized.contains("/")) {
-            bonusPart = normalized.substring(normalized.indexOf('/') + 1);
-        }
-        return parseIntegerToken(bonusPart);
-    }
-
-    private static int parseIntegerToken(String value) {
-        String digits = value == null ? "" : value.replaceAll("[^0-9]", "");
-        if (digits.isBlank()) {
-            return 0;
-        }
-        try {
-            return Integer.parseInt(digits);
-        } catch (Exception ignored) {
-            return 0;
-        }
     }
 
     private void restoreSaleStock(Long saleId) {
@@ -834,10 +810,13 @@ public class AdminSalesService {
                 jdbcTemplate.update(
                         """
                         UPDATE medicine_inventory_details
-                        SET sold_qty = CASE WHEN COALESCE(sold_qty, 0) - ? < 0 THEN 0 ELSE COALESCE(sold_qty, 0) - ? END,
+                        SET sold_qty_base = CASE WHEN COALESCE(sold_qty_base, 0) - ? < 0 THEN 0 ELSE COALESCE(sold_qty_base, 0) - ? END,
+                            sold_qty = CASE WHEN COALESCE(sold_qty, 0) - ? < 0 THEN 0 ELSE COALESCE(sold_qty, 0) - ? END,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                         """,
+                        quantity,
+                        quantity,
                         quantity,
                         quantity,
                         inventoryDetailId
@@ -990,37 +969,31 @@ public class AdminSalesService {
     }
 
     private static int parsePackSize(String pack) {
-        String value = pack == null ? "" : pack.trim().toUpperCase(Locale.ROOT);
-        if (value.isBlank()) {
-            return 1;
-        }
-        List<Integer> numbers = new ArrayList<>();
-        Matcher matcher = PACK_NUMBER_PATTERN.matcher(value);
-        while (matcher.find()) {
-            try {
-                numbers.add(Integer.parseInt(matcher.group(1)));
-            } catch (Exception ignored) {
-                // Ignore bad token and continue.
-            }
-        }
-        if (numbers.isEmpty()) {
-            return 1;
-        }
-        if (value.contains("X")) {
-            return Math.max(1, numbers.get(numbers.size() - 1));
-        }
-        return Math.max(1, numbers.get(0));
+        return InventoryQuantityUtils.parsePackSize(pack);
     }
 
-    private static String formatPackSplitStock(int stockSmallest, int packSize) {
+    private static String formatPackSplitStock(int stockSmallest, int packSize, String packUom, String baseUom) {
         int safeStock = Math.max(0, stockSmallest);
         int safePackSize = Math.max(1, packSize);
+        String packLabel = normalizeUom(packUom, InventoryQuantityUtils.packUomFromPackSize(safePackSize));
+        String baseLabel = normalizeUom(baseUom, InventoryQuantityUtils.baseUomFromPackSize(safePackSize));
         if (safePackSize <= 1) {
-            return safeStock + ":0 strips";
+            return safeStock + " " + baseLabel;
         }
         int fullStrips = safeStock / safePackSize;
         int looseUnits = safeStock % safePackSize;
-        return fullStrips + ":" + looseUnits + " strips";
+        if (looseUnits == 0) {
+            return fullStrips + " " + packLabel;
+        }
+        return fullStrips + " " + packLabel + " + " + looseUnits + " " + baseLabel;
+    }
+
+    private static String normalizeUom(String value, String fallback) {
+        String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            return fallback == null ? "" : fallback.trim().toUpperCase(Locale.ROOT);
+        }
+        return normalized;
     }
 
     private record LotAllocation(Long inventoryDetailId, String batch, String expiry, int quantity) {}

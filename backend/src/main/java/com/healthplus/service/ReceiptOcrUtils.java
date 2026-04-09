@@ -7,7 +7,6 @@ final class ReceiptOcrUtils {
     private static final java.util.regex.Pattern DEAL_RATE_PATTERN = java.util.regex.Pattern.compile("(?i)\\brate\\s*[:=]\\s*(\\d+(?:\\.\\d+)?)");
     private static final java.util.regex.Pattern DEAL_QTY_PATTERN = java.util.regex.Pattern.compile("(\\d+)\\s*[+/]\\s*(\\d+)");
     private static final java.util.regex.Pattern DEAL_TEXT_PATTERN = java.util.regex.Pattern.compile("(?i)\\b(deal|scheme|offer|lot|actual\\s*rate)\\b[:\\-\\s]*([A-Za-z0-9+./=\\s-]+)");
-    private static final java.util.regex.Pattern PACK_NUMBER_PATTERN = java.util.regex.Pattern.compile("(\\d+)");
 
     private ReceiptOcrUtils() {}
 
@@ -28,31 +27,11 @@ final class ReceiptOcrUtils {
     }
 
     static int parseQtyFr(String value) {
-        if (value == null || value.isBlank()) {
-            return 0;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        String primary = normalized;
-        if (normalized.contains("+")) {
-            primary = normalized.substring(0, normalized.indexOf('+'));
-        } else if (normalized.contains("/")) {
-            primary = normalized.substring(0, normalized.indexOf('/'));
-        }
-        return parseQuantity(primary);
+        return InventoryQuantityUtils.parseQtyFrPrimary(value);
     }
 
     static int parseBonusFromQtyFr(String value) {
-        if (value == null || value.isBlank()) {
-            return 0;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        String bonusPart = "";
-        if (normalized.contains("+")) {
-            bonusPart = normalized.substring(normalized.indexOf('+') + 1);
-        } else if (normalized.contains("/")) {
-            bonusPart = normalized.substring(normalized.indexOf('/') + 1);
-        }
-        return parseQuantity(bonusPart);
+        return InventoryQuantityUtils.parseQtyFrBonus(value);
     }
 
     static String normalizeQtyFr(String value) {
@@ -67,35 +46,11 @@ final class ReceiptOcrUtils {
     }
 
     static int parsePackSize(String pack) {
-        String value = pack == null ? "" : pack.trim().toUpperCase(Locale.ROOT);
-        if (value.isBlank()) {
-            return 1;
-        }
-        java.util.regex.Matcher matcher = PACK_NUMBER_PATTERN.matcher(value);
-        java.util.List<Integer> numbers = new java.util.ArrayList<>();
-        while (matcher.find()) {
-            try {
-                numbers.add(Integer.parseInt(matcher.group(1)));
-            } catch (Exception ignored) {
-                // Ignore malformed token and continue.
-            }
-        }
-        if (numbers.isEmpty()) {
-            return 1;
-        }
-        if (value.contains("X")) {
-            return Math.max(1, numbers.get(numbers.size() - 1));
-        }
-        return Math.max(1, numbers.get(0));
+        return InventoryQuantityUtils.parsePackSize(pack);
     }
 
     static int toSmallestUnits(int quantity, String pack) {
-        int safeQty = Math.max(0, quantity);
-        int packSize = Math.max(1, parsePackSize(pack));
-        if (safeQty == 0) {
-            return 0;
-        }
-        return safeQty * packSize;
+        return InventoryQuantityUtils.toBaseUnits(quantity, pack);
     }
 
     static String normalizeBonusText(String bonusText, String qtyFr) {
@@ -158,6 +113,14 @@ final class ReceiptOcrUtils {
         return "";
     }
 
+    /**
+     * Effective cost per unit after tax/discount and bonus dilution.
+     *
+     * Flow:
+     * 1) Resolve paid qty and bonus qty from explicit fields and OCR text (`qtyFr`, `bonus`, `deal`).
+     * 2) Apply GST/discount adjustments on base rate.
+     * 3) If bonus exists, spread the same paid amount across paid+bonus units.
+     */
     static double computeEffectiveCostPrice(double rate,
                                             double mrp,
                                             double gst,
@@ -168,15 +131,19 @@ final class ReceiptOcrUtils {
                                             String deal,
                                             int quantityAdded,
                                             int bonusQty) {
+        // Prefer explicit purchase rate; fallback to MRP if rate is absent.
         double baseRate = rate > 0 ? rate : mrp;
         if (baseRate <= 0) {
             return 0;
         }
 
+        // `paidQty` = quantity billed/paid by the store (before bonus dilution).
         int paidQty = quantityAdded > 0 ? quantityAdded : parseQtyFr(qtyFr);
+        // Ratio source (e.g., 10+1) if present in OCR text.
         int ratioPaidQty = 0;
         int bonusQtyResolved = bonusQty;
 
+        // First preference: infer ratio from qty field itself (qtyFr).
         String qtyCandidate = qtyFr == null ? "" : qtyFr.trim();
         int[] qtyPair = extractQtyBonusPair(qtyCandidate);
         if (qtyPair[0] > 0 && qtyPair[1] > 0) {
@@ -187,6 +154,7 @@ final class ReceiptOcrUtils {
             bonusQtyResolved = Math.max(bonusQtyResolved, parseBonusFromQtyFr(qtyCandidate));
         }
 
+        // Next preference: parse bonus text if ratio/bonus is still incomplete.
         String bonusCandidate = bonusText == null ? "" : bonusText.trim();
         if ((bonusQtyResolved <= 0 || ratioPaidQty <= 0)
                 && !bonusCandidate.isBlank()
@@ -202,7 +170,12 @@ final class ReceiptOcrUtils {
                 bonusQtyResolved = Math.max(bonusQtyResolved, parseBonusFromQtyFr(bonusCandidate));
             }
         }
+        // Accept plain numeric bonus text too (e.g., "1", "2 free").
+        if (bonusQtyResolved <= 0 && !bonusCandidate.isBlank()) {
+            bonusQtyResolved = Math.max(0, parseQuantity(bonusCandidate));
+        }
 
+        // Final fallback: deal text may also carry the same ratio semantics.
         String dealCandidate = deal == null ? "" : deal.trim();
         if ((bonusQtyResolved <= 0 || ratioPaidQty <= 0)
                 && !dealCandidate.isBlank()
@@ -219,6 +192,7 @@ final class ReceiptOcrUtils {
             }
         }
 
+        // If paid qty was missing but ratio has a paid part, use ratio paid qty.
         if (ratioPaidQty > 0 && paidQty <= 0) {
             paidQty = ratioPaidQty;
         }
@@ -226,11 +200,15 @@ final class ReceiptOcrUtils {
             return 0;
         }
 
+        // Pricing rule: discount first, then GST (multiplier form).
         double adjustmentMultiplier = (1 + (gst / 100.0))
                 * (1 - (dis1 / 100.0))
                 * (1 - (dis2 / 100.0));
         double adjustedRate = Math.max(0, baseRate * adjustmentMultiplier);
 
+        // Bonus dilution:
+        // If scheme is p+b, paid amount for `p` units is spread over `p+b` units.
+        // For paidQty > p, scale bonus proportionally.
         if (bonusQtyResolved > 0) {
             int ratioBase = ratioPaidQty > 0 ? ratioPaidQty : paidQty;
             if (ratioBase > 0) {

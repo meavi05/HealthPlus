@@ -39,7 +39,12 @@ export default function AdminPanel({ show }: AdminPanelProps) {
   const [agencyBillsLoading, setAgencyBillsLoading] = useState(false);
   const [selectedBill, setSelectedBill] = useState<AgencyBillRow | null>(null);
   const [billMedicines, setBillMedicines] = useState<BillMedicineRow[]>([]);
-  const [billSummary, setBillSummary] = useState<{ line_items?: number; total_units_added?: number } | null>(null);
+  const [billSummary, setBillSummary] = useState<{
+    line_items?: number;
+    total_units_added?: number;
+    calculated_discount_total?: number;
+    calculated_gst_total?: number;
+  } | null>(null);
   const [billDetailsLoading, setBillDetailsLoading] = useState(false);
 
   const [inventoryReceiptFile, setInventoryReceiptFile] = useState<File | null>(null);
@@ -135,6 +140,12 @@ export default function AdminPanel({ show }: AdminPanelProps) {
     fetch(`/api/admin/item-master/bills/${bill.id}`)
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load bill details'))))
       .then((data: BillDetailsResponse) => {
+        if (data?.bill && typeof data.bill === 'object') {
+          setSelectedBill((prev) => ({
+            ...(prev || bill),
+            ...((data.bill as Record<string, unknown>) as Partial<AgencyBillRow>),
+          }));
+        }
         setBillMedicines(Array.isArray(data.medicines) ? data.medicines : []);
         setBillSummary(data.summary || null);
       })
@@ -285,7 +296,16 @@ export default function AdminPanel({ show }: AdminPanelProps) {
       dis2: number;
       amount: number;
       quantity_added: number;
+      bonus_qty?: number;
+      purchase_qty_entered?: number;
+      purchase_qty_base?: number;
+      bonus_qty_entered?: number;
+      bonus_qty_base?: number;
+      sold_qty_base?: number;
+      pack_size?: number;
+      purchase_uom?: string;
       bonus: number;
+      deal: string;
       source: string;
     }
   ) =>
