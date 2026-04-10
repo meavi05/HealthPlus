@@ -25,7 +25,7 @@ const emptyItem = (): SaleFormItem => ({
   medicine_name: '',
   selected_batch: '',
   strips: 0,
-  units: 1,
+  units: 0,
   strip_price: 0,
   pack_size_override: '',
   discount_percent: 0,
@@ -807,148 +807,40 @@ export default function SalesTab() {
               const rowPackNeedsInput = rowPackFromMetadata == null;
               const rowPackMissing = rowPackNeedsInput && toSafeInt(Number(item.pack_size_override || 0)) <= 0;
               const rowUoms = resolveUomLabels(item);
+              const selectedMedicine = medicineRows.find((medicine) => medicine.id === item.medicine_id);
               const packQtyLabel = rowPackSize > 1 ? rowUoms.packUom : 'PACK';
               const baseQtyLabel = rowUoms.baseUom;
+              const rowUnitPrice = itemUnitPrice(item);
+              const rowTotal = lineTotal(item);
               return (
               <div
                 key={item.key}
-                className={`rounded-lg border p-2 bg-white ${
+                className={`rounded-xl border p-3 bg-white ${
                   rowPackMissing ? 'border-red-300 bg-red-50/40' : 'border-[#d9e7fb]'
                 }`}
               >
-                <div className="grid grid-cols-2 md:grid-cols-12 gap-2 items-end">
-                  <label className="text-[11px] text-slate-600 md:col-span-3">Medicine
-                    <select
-                      value={item.medicine_id}
-                      onChange={(e) => {
-                        const medicineId = Number(e.target.value || 0);
-                        if (!medicineId) {
-                          setItems((prev) => prev.map((row, idx) => (idx === index ? emptyItem() : row)));
-                          return;
-                        }
-                        applyMedicineSelection(index, medicineId).catch((err: Error) => setError(err.message));
-                      }}
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="">Select</option>
-                      {medicineRows.map((medicine) => (
-                        <option key={medicine.id} value={medicine.id}>
-                          {medicine.name} {medicine.brand ? `• ${medicine.brand}` : ''} • {medicine.stock_display || medicine.stock || 0}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="text-[11px] text-slate-600">{packQtyLabel}
-                    <input
-                      type="number"
-                      value={item.strips}
-                      min={0}
-                      onChange={(e) => updateItemSplit(index, Number(e.target.value || 0), item.units)}
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    />
-                  </label>
-
-                  <label className="text-[11px] text-slate-600">{baseQtyLabel}
-                    <input
-                      type="number"
-                      value={item.units}
-                      min={0}
-                      max={rowPackSize > 1 ? rowPackSize - 1 : undefined}
-                      onChange={(e) => updateItemSplit(index, item.strips, Number(e.target.value || 0))}
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    />
-                  </label>
-
-                  <label className="text-[11px] text-slate-600">Pack
-                    <input
-                      type="number"
-                      value={item.pack_size_override}
-                      min={1}
-                      disabled={!rowPackNeedsInput}
-                      placeholder={rowPackNeedsInput ? 'size' : String(rowPackSize)}
-                      onChange={(e) => {
-                        const value = e.target.value.trim();
-                        updatePackSizeOverride(index, value ? Number(value) : '');
-                      }}
-                      className={`mt-1 w-full rounded-md px-2 py-1.5 text-xs border ${
-                        rowPackMissing
-                          ? 'border-red-300 bg-red-50 text-red-900'
-                          : rowPackNeedsInput
-                            ? 'border-[#d8e6fa] bg-white text-slate-700'
-                            : 'border-[#d8e6fa] bg-slate-50 text-slate-500'
-                      }`}
-                    />
-                  </label>
-
-                  <label className="text-[11px] text-slate-600 md:col-span-2">Batch
-                    <select
-                      value={item.selected_batch}
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((row, idx) => (idx === index ? { ...row, selected_batch: e.target.value } : row))
-                        )
-                      }
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="">Auto</option>
-                      {item.lots.map((lot) => {
-                        const lotBatch = String(lot.batch || '').trim();
-                        const lotLabel = lotBatch || `Lot #${lot.id}`;
-                        return (
-                          <option key={`${lot.id}-${lotLabel}`} value={lotBatch}>
-                            {lotLabel} • {lot.expiry || '-'} • {lot.available_display || lot.available_qty || 0}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </label>
-
-                  <label className="text-[11px] text-slate-600">{packQtyLabel} ₹
-                    <input
-                      type="number"
-                      value={item.strip_price}
-                      min={0}
-                      step="0.01"
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((row, idx) => (idx === index ? { ...row, strip_price: Number(e.target.value || 0) } : row))
-                        )
-                      }
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    />
-                  </label>
-
-                  <label className="text-[11px] text-slate-600">Dis %
-                    <input
-                      type="number"
-                      value={item.discount_percent}
-                      min={0}
-                      step="0.01"
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((row, idx) => (idx === index ? { ...row, discount_percent: Number(e.target.value || 0) } : row))
-                        )
-                      }
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    />
-                  </label>
-
-                  <label className="text-[11px] text-slate-600">GST %
-                    <input
-                      type="number"
-                      value={item.gst_percent}
-                      min={0}
-                      step="0.01"
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((row, idx) => (idx === index ? { ...row, gst_percent: Number(e.target.value || 0) } : row))
-                        )
-                      }
-                      className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
-                    />
-                  </label>
-
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="rounded-full border border-[#dce8fa] bg-[#f6faff] px-2 py-0.5 text-slate-600">
+                      Qty: <strong>{itemQuantity(item)}</strong>
+                    </span>
+                    <span className="rounded-full border border-[#dce8fa] bg-[#f6faff] px-2 py-0.5 text-slate-600">
+                      Unit: <strong>{formatCurrency(rowUnitPrice)}</strong>
+                    </span>
+                    <span className="rounded-full border border-[#dce8fa] bg-[#f6faff] px-2 py-0.5 text-slate-600">
+                      Line: <strong className="text-[#0b5ed7]">{formatCurrency(rowTotal)}</strong>
+                    </span>
+                    {selectedMedicine?.stock_display ? (
+                      <span className="rounded-full border border-[#dce8fa] bg-[#f6faff] px-2 py-0.5 text-slate-600">
+                        Stock: <strong>{selectedMedicine.stock_display}</strong>
+                      </span>
+                    ) : null}
+                    {item.near_expiry ? (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
+                        Near Expiry {item.near_expiry_days != null ? `(${item.near_expiry_days}d)` : ''}
+                      </span>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
                     onClick={() =>
@@ -959,11 +851,151 @@ export default function SalesTab() {
                         return prev.filter((_, idx) => idx !== index);
                       })
                     }
-                    className="h-8 w-8 md:ml-auto rounded-md border border-red-300 bg-red-50 text-red-700 text-base leading-none"
+                    className="h-8 w-8 rounded-md border border-red-300 bg-red-50 text-red-700 text-base leading-none shrink-0"
                     title={items.length <= 1 ? 'Clear row' : 'Remove row'}
                   >
                     -
                   </button>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-[#e4eefc] bg-[#fbfdff] p-2.5 space-y-2">
+                    <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Item & Quantity</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="text-[11px] text-slate-600 sm:col-span-2">Medicine
+                        <select
+                          value={item.medicine_id}
+                          onChange={(e) => {
+                            const medicineId = Number(e.target.value || 0);
+                            if (!medicineId) {
+                              setItems((prev) => prev.map((row, idx) => (idx === index ? emptyItem() : row)));
+                              return;
+                            }
+                            applyMedicineSelection(index, medicineId).catch((err: Error) => setError(err.message));
+                          }}
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        >
+                          <option value="">Select</option>
+                          {medicineRows.map((medicine) => (
+                            <option key={medicine.id} value={medicine.id}>
+                              {medicine.name} {medicine.brand ? `• ${medicine.brand}` : ''} • {medicine.stock_display || medicine.stock || 0}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-600">Batch
+                        <select
+                          value={item.selected_batch}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((row, idx) => (idx === index ? { ...row, selected_batch: e.target.value } : row))
+                            )
+                          }
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        >
+                          <option value="">Auto</option>
+                          {item.lots.map((lot) => {
+                            const lotBatch = String(lot.batch || '').trim();
+                            const lotLabel = lotBatch || `Lot #${lot.id}`;
+                            return (
+                              <option key={`${lot.id}-${lotLabel}`} value={lotBatch}>
+                                {lotLabel} • {lot.expiry || '-'} • {lot.available_display || lot.available_qty || 0}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-600">Pack Size
+                        <input
+                          type="number"
+                          value={item.pack_size_override}
+                          min={1}
+                          disabled={!rowPackNeedsInput}
+                          placeholder={rowPackNeedsInput ? 'size' : String(rowPackSize)}
+                          onChange={(e) => {
+                            const value = e.target.value.trim();
+                            updatePackSizeOverride(index, value ? Number(value) : '');
+                          }}
+                          className={`mt-1 w-full rounded-md px-2 py-1.5 text-xs border ${
+                            rowPackMissing
+                              ? 'border-red-300 bg-red-50 text-red-900'
+                              : rowPackNeedsInput
+                                ? 'border-[#d8e6fa] bg-white text-slate-700'
+                                : 'border-[#d8e6fa] bg-slate-50 text-slate-500'
+                          }`}
+                        />
+                      </label>
+                      <label className="text-[11px] text-slate-600">{packQtyLabel}
+                        <input
+                          type="number"
+                          value={item.strips}
+                          min={0}
+                          onChange={(e) => updateItemSplit(index, Number(e.target.value || 0), item.units)}
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        />
+                      </label>
+                      <label className="text-[11px] text-slate-600">{baseQtyLabel}
+                        <input
+                          type="number"
+                          value={item.units}
+                          min={0}
+                          max={rowPackSize > 1 ? rowPackSize - 1 : undefined}
+                          onChange={(e) => updateItemSplit(index, item.strips, Number(e.target.value || 0))}
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[#e4eefc] bg-[#fbfdff] p-2.5 space-y-2">
+                    <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Pricing & Tax</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label className="text-[11px] text-slate-600 sm:col-span-3">{packQtyLabel} ₹
+                        <input
+                          type="number"
+                          value={item.strip_price}
+                          min={0}
+                          step="0.01"
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((row, idx) => (idx === index ? { ...row, strip_price: Number(e.target.value || 0) } : row))
+                            )
+                          }
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        />
+                      </label>
+                      <label className="text-[11px] text-slate-600">Dis %
+                        <input
+                          type="number"
+                          value={item.discount_percent}
+                          min={0}
+                          step="0.01"
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((row, idx) => (idx === index ? { ...row, discount_percent: Number(e.target.value || 0) } : row))
+                            )
+                          }
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        />
+                      </label>
+                      <label className="text-[11px] text-slate-600">GST %
+                        <input
+                          type="number"
+                          value={item.gst_percent}
+                          min={0}
+                          step="0.01"
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((row, idx) => (idx === index ? { ...row, gst_percent: Number(e.target.value || 0) } : row))
+                            )
+                          }
+                          className="mt-1 w-full border border-[#d8e6fa] rounded-md px-2 py-1.5 text-xs bg-white"
+                        />
+                      </label>
+                      <div className="rounded-md border border-[#d8e6fa] bg-white px-2 py-1.5 text-[11px] text-slate-600">
+                        <p className="text-slate-500">Unit Price</p>
+                        <p className="font-semibold text-slate-800">{formatCurrency(rowUnitPrice)}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {rowPackMissing ? <p className="mt-1 text-[11px] text-red-700">Enter pack size for this item.</p> : null}
                 {index === items.length - 1 ? (
